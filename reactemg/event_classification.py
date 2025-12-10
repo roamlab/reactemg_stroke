@@ -1362,9 +1362,15 @@ def gather_csv_paths(files_or_dirs, args_dict):
       1. contains no "movement" or "unlabeled",
       2. ends with ".csv",
       3. **starts with one of the strings in args_dict['val_patient_ids'] followed by an underscore**.
+         If val_patient_ids is ['none'] or None, accept all CSV files.
     Returns a list of matching CSV file paths.
     """
     val_patient_ids = args_dict["val_patient_ids"]
+    # If val_patient_ids is ['none'] or None, skip the patient ID filtering
+    skip_patient_filter = (val_patient_ids is None or
+                           val_patient_ids == ['none'] or
+                           'none' in val_patient_ids)
+
     all_csv_paths = []
     for path_item in files_or_dirs:
         if os.path.isdir(path_item):
@@ -1377,7 +1383,7 @@ def gather_csv_paths(files_or_dirs, args_dict):
                             or "unlabeled" in filename_lower
                         ):
                             continue
-                        if any(f.startswith(pid + "_") for pid in val_patient_ids):
+                        if skip_patient_filter or any(f.startswith(pid + "_") for pid in val_patient_ids):
                             all_csv_paths.append(os.path.join(root, f))
         elif os.path.isfile(path_item):
             f = os.path.basename(path_item)
@@ -1385,7 +1391,7 @@ def gather_csv_paths(files_or_dirs, args_dict):
             if filename_lower.endswith(".csv"):
                 if "movement" in filename_lower or "unlabeled" in filename_lower:
                     continue
-                if any(f.startswith(pid + "_") for pid in val_patient_ids):
+                if skip_patient_filter or any(f.startswith(pid + "_") for pid in val_patient_ids):
                     all_csv_paths.append(path_item)
         else:
             print(f"Skipping invalid path: {path_item}")

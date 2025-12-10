@@ -61,6 +61,7 @@ def main(args):
         epn_subset_percentage=args.epn_subset_percentage,
         discard_labeled_percentage=args.discard_labeled_percentage,
         custom_data_folder=args.custom_data_folder,
+        exclude_files=args.exclude_files,
     )
 
     # Filter out unlabeled from both train/val, specific to the EMG-EPN-612 dataset
@@ -308,6 +309,12 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Path to custom folder containing .csv or .npy files. Required when dataset_selection='custom_folder'",
+    )
+    parser.add_argument(
+        "--exclude_files",
+        nargs="+",
+        default=None,
+        help="List of filenames to exclude from training (matched by basename)",
     )
     parser.add_argument(
         "--val_patient_ids",

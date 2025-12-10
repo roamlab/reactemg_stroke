@@ -39,6 +39,7 @@ def get_csv_paths(
     epn_subset_percentage,
     discard_labeled_percentage,
     custom_data_folder=None,
+    exclude_files=None,
 ):
     """
     Construct dataset paths
@@ -69,6 +70,8 @@ def get_csv_paths(
     epn_subset_percentage : float, optional
         Fraction of EPN files (0.0 - 1.0) to keep from the eligible set if
         dataset_selection == "pub_with_roam_with_epn" OR == "pub_with_epn".
+    exclude_files : list of str, optional
+        List of filenames to exclude from training. Matching is done by basename.
 
     Returns
     -------
@@ -103,6 +106,20 @@ def get_csv_paths(
 
         # Sort for reproducibility
         all_paths.sort()
+
+        # Filter out excluded files if specified
+        if exclude_files is not None:
+            excluded_count = 0
+            filtered_paths = []
+            for path in all_paths:
+                basename = os.path.basename(path)
+                if basename not in exclude_files:
+                    filtered_paths.append(path)
+                else:
+                    excluded_count += 1
+                    print(f"[custom_folder] Excluding file: {basename}")
+            all_paths = filtered_paths
+            print(f"[custom_folder] Excluded {excluded_count} file(s)")
 
         # Use same files for both training and validation
         train_paths = all_paths
