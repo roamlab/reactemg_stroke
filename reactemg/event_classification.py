@@ -1466,12 +1466,17 @@ def main(
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
+    # Override val_patient_ids to accept all files when files_or_dirs are directly specified
+    # This allows evaluation on stroke participants (p15, p20) using healthy-pretrained checkpoints
+    args_dict_modified = args_dict.copy()
+    args_dict_modified["val_patient_ids"] = ["none"]
+
     # Depending on epn_eval, gather files:
     if epn_eval == 1:
         epn_data_master_folder = files_or_dirs[0]
         csv_paths_all = gather_epn_paths(epn_data_master_folder)
     else:
-        csv_paths_all = gather_csv_paths(files_or_dirs, args_dict)
+        csv_paths_all = gather_csv_paths(files_or_dirs, args_dict_modified)
 
     if not csv_paths_all:
         raise ValueError("No valid files found for evaluation.")
@@ -1749,6 +1754,90 @@ def main(
         print(f"File-level details JSON saved to: {details_path}")
 
     return avg_event_accuracy, avg_raw_accuracy
+
+
+def evaluate_checkpoint_programmatic(
+    checkpoint_path,
+    csv_files,
+    buffer_range=800,
+    lookahead=100,
+    samples_between_prediction=100,
+    allow_relax=1,
+    stride=1,
+    model_choice="any2any",
+    verbose=0,
+):
+    """
+    Programmatically evaluate a checkpoint on specified files and return metrics.
+
+    This is a convenience wrapper around the main() function for use in
+    hyperparameter search and automated evaluation scripts.
+
+    Args:
+        checkpoint_path: Path to .pth checkpoint file
+        csv_files: List of CSV file paths to evaluate on
+        buffer_range: Buffer range for transition detection (default: 800)
+        lookahead: Lookahead for prediction (default: 100)
+        samples_between_prediction: Samples between predictions (default: 100)
+        allow_relax: Whether to allow relax transitions (default: 1)
+        stride: Stride for sliding window (default: 1)
+        model_choice: Model architecture (default: "any2any")
+        verbose: Verbosity level (0=quiet, 1=detailed) (default: 0)
+
+    Returns:
+        dict: {
+            'transition_accuracy': float,
+            'raw_accuracy': float,
+        }
+
+    Example:
+        >>> metrics = evaluate_checkpoint_programmatic(
+        ...     checkpoint_path='model.pth',
+        ...     csv_files=['p15_open_1.csv', 'p15_close_1.csv']
+        ... )
+        >>> print(f"Transition accuracy: {metrics['transition_accuracy']:.4f}")
+    """
+    # Standard evaluation parameters
+    eval_batch_size = 1
+    eval_task = "predict_action"
+    transition_samples_only = False
+    mask_percentage = 0.6
+    mask_type = "poisson"
+    weight_max_factor = 1.0
+    likelihood_format = "logits"
+    maj_vote_range = "future"
+    epn_eval = 0
+    recog_threshold = 0.5
+    sample_range = None
+
+    # Call main evaluation function
+    transition_acc, raw_acc = main(
+        saved_checkpoint_pth=checkpoint_path,
+        eval_batch_size=eval_batch_size,
+        eval_task=eval_task,
+        transition_samples_only=transition_samples_only,
+        buffer_range=buffer_range,
+        mask_percentage=mask_percentage,
+        mask_type=mask_type,
+        stride=stride,
+        files_or_dirs=csv_files,
+        allow_relax=allow_relax,
+        lookahead=lookahead,
+        weight_max_factor=weight_max_factor,
+        likelihood_format=likelihood_format,
+        samples_between_prediction=samples_between_prediction,
+        maj_vote_range=maj_vote_range,
+        epn_eval=epn_eval,
+        recog_threshold=recog_threshold,
+        verbose=verbose,
+        model_choice=model_choice,
+        sample_range=sample_range,
+    )
+
+    return {
+        'transition_accuracy': transition_acc,
+        'raw_accuracy': raw_acc,
+    }
 
 
 ###############################################################################

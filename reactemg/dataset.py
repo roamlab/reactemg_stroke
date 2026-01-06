@@ -646,6 +646,7 @@ class Any2Any_Dataset(Dataset):
         transition_samples_only=False,
         mask_percentage=0.6,
         mask_type="poisson",
+        sampled_segments=None,
     ):
         """
         This dataset supports both labeled and unlabeled data in csv/numpy format, applies
@@ -771,6 +772,7 @@ class Any2Any_Dataset(Dataset):
         self.hand_choice = hand_choice
         self.inner_window_size = inner_window_size
         self.use_mav_for_emg = use_mav_for_emg
+        self.sampled_segments = sampled_segments  # Dict: {file_path: [(start, end), ...]}
 
         self.curriculum_stage = 0
         self.stage_1_weights = stage_1_weights
@@ -1009,6 +1011,18 @@ class Any2Any_Dataset(Dataset):
             clipped_data = scaled_data.to_numpy().astype(np.float32)
         else:
             clipped_data = scaled_data.astype(np.float32)
+
+        # Handle sampled segments: extract only specified segments from this file
+        if self.sampled_segments is not None and path in self.sampled_segments:
+            segment_indices = self.sampled_segments[path]
+            # Extract and concatenate specified segments
+            segment_data_list = []
+            segment_action_list = []
+            for start_idx, end_idx in segment_indices:
+                segment_data_list.append(clipped_data[start_idx:end_idx])
+                segment_action_list.append(action_sequence[start_idx:end_idx])
+            clipped_data = np.vstack(segment_data_list)
+            action_sequence = np.concatenate(segment_action_list)
 
         # NEW (use_mav_for_emg): If we want to do ED-TCN-style MAV extraction,
         # we create subwindows for each outer window. Then each sample is smaller in time dimension.

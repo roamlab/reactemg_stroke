@@ -144,6 +144,17 @@ def main(args):
         }
         add_lora(model, lora_config)
 
+    # Freeze backbone for head-only fine-tuning
+    if args.freeze_backbone == 1:
+        print("Freezing backbone. Only training action_output_projection head...")
+        # Freeze all parameters
+        for param in model.parameters():
+            param.requires_grad = False
+        # Unfreeze only action_output_projection
+        for param in model.action_output_projection.parameters():
+            param.requires_grad = True
+        print("Backbone frozen. Only action_output_projection is trainable.")
+
     model.to(device)
     print(
         "Total trainable parameters:",
@@ -416,6 +427,13 @@ if __name__ == "__main__":
         "--lora_dropout_p", default=0.05, type=float, help="dropout rate on lora"
     )
     parser.add_argument(
+        "--freeze_backbone",
+        default=0,
+        type=int,
+        choices=[0, 1],
+        help="Whether to freeze backbone and only train action_output_projection head",
+    )
+    parser.add_argument(
         "--output_reduction_method",
         default="none",
         type=str,
@@ -436,6 +454,13 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", default=12, type=int, help="Training epochs")
     parser.add_argument(
         "--learning_rate", default=1e-4, type=float, help="Learning rate"
+    )
+    parser.add_argument(
+        "--save_every_epoch",
+        default=0,
+        type=int,
+        choices=[0, 1],
+        help="If 1, save checkpoint after every epoch instead of only the final one"
     )
     parser.add_argument(
         "--use_input_layernorm",
