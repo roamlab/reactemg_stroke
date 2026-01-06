@@ -14,7 +14,7 @@ import numpy as np
 import subprocess
 import glob
 from typing import Dict, List, Tuple
-from dataset_utils import get_paired_repetition_indices, sample_nested_repetitions
+from dataset_utils import get_paired_repetition_indices, sample_repetitions
 from event_classification import evaluate_checkpoint_programmatic
 
 
@@ -279,7 +279,7 @@ def run_data_efficiency_experiment(
         print(f"{'*'*80}\n")
 
         # Sample repetitions for this budget
-        sampled_trials = sample_nested_repetitions(
+        sampled_trials = sample_repetitions(
             paired_reps=paired_reps,
             budget_k=budget_k,
             num_trials=12,

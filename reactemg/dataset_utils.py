@@ -152,25 +152,23 @@ def get_paired_repetition_indices(
     return paired_reps
 
 
-def sample_nested_repetitions(
+def sample_repetitions(
     paired_reps: Dict,
     budget_k: int,
     num_trials: int = 12,
     seed: int = 42
 ) -> List[List[str]]:
     """
-    Sample nested repetitions for data efficiency experiment.
+    Sample repetitions for data efficiency experiment.
 
-    For K=1: Each trial uses a unique g_i (no overlap across trials)
-    For K>1: Each trial starts with the same g_i as K=1, then samples
-             K-1 additional repetitions without replacement from others.
-
-    Nesting: Samples from larger K include all samples from smaller K.
+    For K=1: Each trial uses a unique g_i (trial i uses g_i)
+    For K>1: Each trial randomly samples K repetitions without replacement.
+             Same g_i can appear across different trials.
 
     Args:
         paired_reps: Dict from get_paired_repetition_indices()
         budget_k: Number of paired repetitions per trial (1, 4, or 8)
-        num_trials: Number of trials (default 12, one per base repetition)
+        num_trials: Number of trials (default 12)
         seed: Random seed for reproducibility
 
     Returns:
@@ -180,45 +178,34 @@ def sample_nested_repetitions(
 
     Example:
         >>> paired_reps = get_paired_repetition_indices('~/path/to/p15/')
-        >>> k1_samples = sample_nested_repetitions(paired_reps, budget_k=1)
-        >>> k4_samples = sample_nested_repetitions(paired_reps, budget_k=4)
-        >>> # k4_samples[0] contains k1_samples[0] plus 3 more
+        >>> k1_samples = sample_repetitions(paired_reps, budget_k=1)
+        >>> k4_samples = sample_repetitions(paired_reps, budget_k=4)
     """
     np.random.seed(seed)
     all_g_names = sorted(paired_reps.keys())  # g_0 through g_11
 
-    if len(all_g_names) != num_trials:
+    if budget_k > len(all_g_names):
         raise ValueError(
-            f"Expected {num_trials} paired reps, got {len(all_g_names)}"
+            f"budget_k ({budget_k}) cannot exceed number of available "
+            f"paired repetitions ({len(all_g_names)})"
         )
 
-    trials = []
-
-    for trial_idx in range(num_trials):
-        # Base repetition (always included)
-        base_g = all_g_names[trial_idx]
-        trial_samples = [base_g]
-
-        # Sample additional repetitions if K > 1
-        if budget_k > 1:
-            # Remaining candidates (exclude base_g)
-            remaining = [g for g in all_g_names if g != base_g]
-
-            # Sample K-1 additional without replacement
-            num_additional = budget_k - 1
-            if num_additional > len(remaining):
-                raise ValueError(
-                    f"Cannot sample {num_additional} from {len(remaining)} remaining"
-                )
-
-            additional = np.random.choice(
-                remaining,
-                size=num_additional,
+    if budget_k == 1:
+        # Each trial uses exactly one unique repetition: trial i uses g_i
+        if num_trials > len(all_g_names):
+            raise ValueError(
+                f"For K=1, num_trials ({num_trials}) cannot exceed "
+                f"number of paired repetitions ({len(all_g_names)})"
+            )
+        return [[all_g_names[i]] for i in range(num_trials)]
+    else:
+        # Randomly sample K from all 12 for each trial (no replacement within trial)
+        trials = []
+        for _ in range(num_trials):
+            sampled = np.random.choice(
+                all_g_names,
+                size=budget_k,
                 replace=False
             ).tolist()
-
-            trial_samples.extend(additional)
-
-        trials.append(trial_samples)
-
-    return trials
+            trials.append(sampled)
+        return trials

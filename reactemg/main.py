@@ -203,9 +203,9 @@ def main(args):
     args_dict = vars(args)
     args_dict["command_line_command"] = command_line_command
     args_dict["mask_tokens_dict"] = mask_tokens_dict
-    args_dict["labeled_csv_paths_train"] = (labeled_csv_paths_train,)
-    args_dict["labeled_csv_paths_val"] = (labeled_csv_paths_val,)
-    args_dict["unlabeled_csv_paths_train"] = (unlabeled_csv_paths_train,)
+    args_dict["labeled_csv_paths_train"] = labeled_csv_paths_train
+    args_dict["labeled_csv_paths_val"] = labeled_csv_paths_val
+    args_dict["unlabeled_csv_paths_train"] = unlabeled_csv_paths_train
     args_dict["public_data_folders"] = public_data_folders
     args_dict["num_files_train"] = len(labeled_csv_paths_train)
     args_dict["num_files_val"] = len(labeled_csv_paths_val)
