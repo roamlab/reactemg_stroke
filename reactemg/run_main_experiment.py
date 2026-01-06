@@ -140,6 +140,8 @@ def train_final_model(
         cmd.extend(["--use_lora", "1", "--lora_rank", "16", "--lora_alpha", "8", "--lora_dropout_p", "0.05"])
     elif variant == 'full_finetune':
         cmd.extend(["--saved_checkpoint_pth", pretrained_checkpoint])
+    else:
+        raise ValueError(f"Unknown variant: {variant}")
 
     # Run training
     subprocess.run(cmd, check=True)
@@ -195,7 +197,7 @@ def evaluate_all_conditions(
             print(f"Warning: No test files found for {condition}")
             continue
 
-        # Evaluate
+        # Evaluate (with latency computation)
         metrics = evaluate_checkpoint_programmatic(
             checkpoint_path=checkpoint_path,
             csv_files=test_files,
@@ -206,9 +208,10 @@ def evaluate_all_conditions(
             stride=1,
             model_choice="any2any",
             verbose=1,  # Save detailed results
+            compute_latency=True,  # Compute detection latency
         )
 
-        # Save metrics summary
+        # Save metrics summary (including latency)
         results_dir = os.path.join(results_base_dir, participant, variant, condition)
         os.makedirs(results_dir, exist_ok=True)
 
@@ -220,11 +223,18 @@ def evaluate_all_conditions(
                 'condition': condition,
                 'transition_accuracy': float(metrics['transition_accuracy']),
                 'raw_accuracy': float(metrics['raw_accuracy']),
+                'average_latency': float(metrics['average_latency']),
+                'std_latency': float(metrics['std_latency']),
+                'median_latency': float(metrics['median_latency']),
+                'min_latency': int(metrics['min_latency']),
+                'max_latency': int(metrics['max_latency']),
+                'num_latency_samples': int(metrics['num_latency_samples']),
                 'test_files': test_files,
             }, f, indent=4)
 
         print(f"  Transition Acc: {metrics['transition_accuracy']:.4f}")
         print(f"  Raw Acc: {metrics['raw_accuracy']:.4f}")
+        print(f"  Avg Latency: {metrics['average_latency']:.1f} ± {metrics['std_latency']:.1f} timesteps")
         print(f"  Results saved to: {results_dir}")
 
 

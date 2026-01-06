@@ -4,7 +4,7 @@ Convergence study for ReactEMG stroke.
 This script:
 1. Trains a model for 10× the optimal number of epochs
 2. Saves checkpoints at every epoch
-3. Evaluates each checkpoint on both stroke test sets and healthy s15 data
+3. Evaluates each checkpoint on both stroke test sets and healthy s25 data
 4. Tracks convergence and potential catastrophic forgetting
 """
 
@@ -26,7 +26,7 @@ PARTICIPANTS = {
 
 PRETRAINED_CHECKPOINT = "/home/rsw1/Workspace/reactemg/reactemg/model_checkpoints/LOSO_s14_left_2025-11-15_19-01-41_pc1/epoch_4.pth"
 
-# HEALTHY_S15_PATH configured via command line argument (see --healthy_s15_path below)
+# HEALTHY_S25_PATH configured via command line argument (see --healthy_s25_path below)
 
 TEST_CONDITIONS = {
     'mid_session_baseline': ['open_5.csv', 'close_5.csv'],
@@ -37,33 +37,33 @@ TEST_CONDITIONS = {
 }
 
 
-def get_healthy_s15_files(s15_path: str = None) -> List[str]:
-    """Get healthy s15 evaluation files (static + grasp, exclude movement)."""
-    if s15_path is None:
-        s15_path = os.path.expanduser("~/Workspace/reactemg/data/ROAM_EMG/s15")
+def get_healthy_s25_files(s25_path: str = None) -> List[str]:
+    """Get healthy s25 evaluation files (static + grasp, exclude movement)."""
+    if s25_path is None:
+        s25_path = os.path.expanduser("~/Workspace/reactemg/data/ROAM_EMG/s25")
     else:
-        s15_path = os.path.expanduser(s15_path)
+        s25_path = os.path.expanduser(s25_path)
 
     # Validate path exists
-    if not os.path.exists(s15_path):
+    if not os.path.exists(s25_path):
         raise FileNotFoundError(
-            f"Healthy s15 path does not exist: {s15_path}\n"
-            f"Please provide correct path with --healthy_s15_path argument"
+            f"Healthy s25 path does not exist: {s25_path}\n"
+            f"Please provide correct path with --healthy_s25_path argument"
         )
 
-    all_files = glob.glob(os.path.join(s15_path, "*.csv"))
+    all_files = glob.glob(os.path.join(s25_path, "*.csv"))
 
     # Filter for static and grasp files
-    s15_files = [
+    s25_files = [
         f for f in all_files
         if ('_static_' in f or '_grasp_' in f) and 'movement' not in f.lower()
     ]
 
-    print(f"Found {len(s15_files)} s15 evaluation files:")
-    for f in s15_files:
+    print(f"Found {len(s25_files)} s25 evaluation files:")
+    for f in s25_files:
         print(f"  - {os.path.basename(f)}")
 
-    return s15_files
+    return s25_files
 
 
 def get_test_files(participant_folder: str, condition: str) -> List[str]:
@@ -206,7 +206,7 @@ def evaluate_epoch_checkpoint(
     participant_folder: str,
     checkpoint_path: str,
     epoch: int,
-    s15_files: List[str],
+    s25_files: List[str],
 ) -> Dict:
     """
     Evaluate a single epoch checkpoint on stroke and healthy data.
@@ -258,11 +258,11 @@ def evaluate_epoch_checkpoint(
     results['stroke_avg_transition_acc'] = float(np.mean(stroke_trans_accs)) if stroke_trans_accs else 0.0
     results['stroke_avg_raw_acc'] = float(np.mean(stroke_raw_accs)) if stroke_raw_accs else 0.0
 
-    # Evaluate on healthy s15 data
-    print("Evaluating on healthy s15 data...")
+    # Evaluate on healthy s25 data
+    print("Evaluating on healthy s25 data...")
     healthy_metrics = evaluate_checkpoint_programmatic(
         checkpoint_path=checkpoint_path,
-        csv_files=s15_files,
+        csv_files=s25_files,
         buffer_range=800,
         lookahead=100,
         samples_between_prediction=100,
@@ -277,7 +277,7 @@ def evaluate_epoch_checkpoint(
         'raw_accuracy': float(healthy_metrics['raw_accuracy']),
     }
 
-    print(f"  s15: Trans={healthy_metrics['transition_accuracy']:.4f}")
+    print(f"  s25: Trans={healthy_metrics['transition_accuracy']:.4f}")
 
     print(f"Epoch {epoch} - Stroke Avg: {results['stroke_avg_transition_acc']:.4f}, Healthy: {results['healthy_results']['transition_accuracy']:.4f}")
 
@@ -288,7 +288,7 @@ def evaluate_frozen_baseline(
     participant: str,
     participant_folder: str,
     pretrained_checkpoint: str,
-    s15_files: List[str],
+    s25_files: List[str],
 ) -> Dict:
     """Evaluate frozen pretrained model as baseline."""
     print(f"\n{'='*80}")
@@ -300,7 +300,7 @@ def evaluate_frozen_baseline(
         participant_folder=participant_folder,
         checkpoint_path=pretrained_checkpoint,
         epoch=0,  # Epoch 0 denotes frozen baseline
-        s15_files=s15_files,
+        s25_files=s25_files,
     )
 
 
@@ -310,7 +310,7 @@ def run_convergence_study(
     variant: str,
     best_config: Dict,
     pretrained_checkpoint: str,
-    healthy_s15_path: str = None,
+    healthy_s25_path: str = None,
 ):
     """
     Run complete convergence study for one participant.
@@ -321,21 +321,21 @@ def run_convergence_study(
         variant: Best fine-tuning variant
         best_config: Best hyperparameters
         pretrained_checkpoint: Path to pretrained checkpoint
-        healthy_s15_path: Path to healthy s15 data (optional)
+        healthy_s25_path: Path to healthy s25 data (optional)
     """
     print(f"\n{'='*80}")
     print(f"Convergence Study: {participant} - {variant}")
     print(f"{'='*80}\n")
 
-    # Get healthy s15 files
-    s15_files = get_healthy_s15_files(healthy_s15_path)
+    # Get healthy s25 files
+    s25_files = get_healthy_s25_files(healthy_s25_path)
 
     # Evaluate frozen baseline
     frozen_baseline_results = evaluate_frozen_baseline(
         participant=participant,
         participant_folder=participant_folder,
         pretrained_checkpoint=pretrained_checkpoint,
-        s15_files=s15_files,
+        s25_files=s25_files,
     )
 
     # Save frozen baseline
@@ -370,7 +370,7 @@ def run_convergence_study(
             participant_folder=participant_folder,
             checkpoint_path=checkpoint_path,
             epoch=epoch,
-            s15_files=s15_files,
+            s25_files=s25_files,
         )
 
         all_epoch_results.append(epoch_results)
@@ -404,9 +404,9 @@ if __name__ == "__main__":
     parser.add_argument("--participant", required=True, help="Participant ID (e.g., p15)")
     parser.add_argument("--variant", required=True, help="Best fine-tuning variant")
     parser.add_argument("--config_file", required=True, help="Path to best config JSON file")
-    parser.add_argument("--healthy_s15_path",
-                       default="~/Workspace/reactemg/data/ROAM_EMG/s15",
-                       help="Path to healthy s15 data for catastrophic forgetting evaluation")
+    parser.add_argument("--healthy_s25_path",
+                       default="~/Workspace/reactemg/data/ROAM_EMG/s25",
+                       help="Path to healthy s25 data for catastrophic forgetting evaluation")
 
     args = parser.parse_args()
 
@@ -424,7 +424,7 @@ if __name__ == "__main__":
         variant=args.variant,
         best_config=best_config,
         pretrained_checkpoint=PRETRAINED_CHECKPOINT,
-        healthy_s15_path=args.healthy_s15_path,
+        healthy_s25_path=args.healthy_s25_path,
     )
 
     print("\nConvergence study complete!")

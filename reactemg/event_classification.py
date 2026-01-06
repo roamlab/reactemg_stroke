@@ -230,6 +230,116 @@ def transition_metrics(
     return transition_accuracy, transition_reasons
 
 
+def compute_latency_from_sequences(
+    pred_seq,
+    gt_seq,
+    transition_reasons,
+    buffer_range=800,
+):
+    """
+    Compute detection latency for successful transitions.
+
+    For each successful transition, measures the temporal offset (in timesteps)
+    between the predicted transition and the ground truth transition.
+
+    Args:
+        pred_seq: Predicted sequence (list or np.ndarray)
+        gt_seq: Ground truth sequence (list or np.ndarray)
+        transition_reasons: List of reasons for each transition (from transition_metrics)
+        buffer_range: Buffer range to search for predicted transitions (default: 800)
+
+    Returns:
+        dict: {
+            'latency_values': list of individual latency values (in timesteps),
+            'average_latency': float (mean latency in timesteps),
+            'std_latency': float (std dev of latency),
+            'median_latency': float,
+            'min_latency': int,
+            'max_latency': int,
+            'num_successful_transitions': int,
+            'num_latency_found': int,
+        }
+    """
+    pred_seq = np.array(pred_seq)
+    gt_seq = np.array(gt_seq)
+
+    # Find ground truth transition indices
+    gt_transition_indices = np.where(gt_seq[:-1] != gt_seq[1:])[0]
+
+    latency_values = []
+    half_range = buffer_range // 2
+
+    # Ensure we have matching number of transitions and reasons
+    num_transitions = min(len(gt_transition_indices), len(transition_reasons))
+
+    for i in range(num_transitions):
+        reason = transition_reasons[i]
+
+        # Only process successful transitions
+        if reason == "Successful":
+            gt_trans_idx = gt_transition_indices[i]
+
+            # Determine old and new classes
+            old_class = gt_seq[gt_trans_idx]
+            new_class = gt_seq[gt_trans_idx + 1] if gt_trans_idx + 1 < len(gt_seq) else old_class
+
+            # Search for predicted transition within buffer
+            start = max(0, gt_trans_idx - half_range)
+            end = min(len(pred_seq) - 1, gt_trans_idx + half_range)
+
+            # Look for exact A->B transition in predictions
+            candidates = []
+            for j in range(start, end):
+                if j + 1 < len(pred_seq):
+                    if pred_seq[j] == old_class and pred_seq[j + 1] == new_class:
+                        signed_distance = j - gt_trans_idx
+                        abs_distance = abs(signed_distance)
+                        candidates.append((abs_distance, signed_distance, j))
+
+            # If no exact transition found, look for first occurrence of new_class
+            if not candidates:
+                for j in range(start, end + 1):
+                    if j < len(pred_seq) and pred_seq[j] == new_class:
+                        signed_distance = j - gt_trans_idx
+                        abs_distance = abs(signed_distance)
+                        candidates.append((abs_distance, signed_distance, j))
+                        break
+
+            if candidates:
+                # Take the closest one (minimum absolute distance)
+                candidates.sort(key=lambda x: x[0])
+                abs_latency = candidates[0][0]
+                latency_values.append(abs_latency)
+
+    # Compute statistics
+    num_successful = sum(1 for r in transition_reasons[:num_transitions] if r == "Successful")
+
+    if latency_values:
+        result = {
+            'latency_values': latency_values,
+            'average_latency': float(np.mean(latency_values)),
+            'std_latency': float(np.std(latency_values, ddof=1 if len(latency_values) > 1 else 0)),
+            'median_latency': float(np.median(latency_values)),
+            'min_latency': int(np.min(latency_values)),
+            'max_latency': int(np.max(latency_values)),
+            'num_successful_transitions': num_successful,
+            'num_latency_found': len(latency_values),
+        }
+    else:
+        result = {
+            'latency_values': [],
+            'average_latency': 0.0,
+            'std_latency': 0.0,
+            'median_latency': 0.0,
+            'min_latency': 0,
+            'max_latency': 0,
+            'num_successful_transitions': num_successful,
+            'num_latency_found': 0,
+        }
+
+    return result
+
+
 def build_gt_sequence(
     gt_matrix,
     stride,
@@ -1445,6 +1555,7 @@ def main(
     verbose,
     model_choice,
     sample_range=None,
+    return_per_file_data=False,
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device", device)
@@ -1753,6 +1864,8 @@ def main(
 
         print(f"File-level details JSON saved to: {details_path}")
 
+    if return_per_file_data:
+        return avg_event_accuracy, avg_raw_accuracy, results_across_files
     return avg_event_accuracy, avg_raw_accuracy
 
 
@@ -1766,6 +1879,7 @@ def evaluate_checkpoint_programmatic(
     stride=1,
     model_choice="any2any",
     verbose=0,
+    compute_latency=False,
 ):
     """
     Programmatically evaluate a checkpoint on specified files and return metrics.
@@ -1783,19 +1897,28 @@ def evaluate_checkpoint_programmatic(
         stride: Stride for sliding window (default: 1)
         model_choice: Model architecture (default: "any2any")
         verbose: Verbosity level (0=quiet, 1=detailed) (default: 0)
+        compute_latency: Whether to compute detection latency metrics (default: False)
 
     Returns:
         dict: {
             'transition_accuracy': float,
             'raw_accuracy': float,
+            # If compute_latency=True, also includes:
+            'average_latency': float (in timesteps),
+            'std_latency': float,
+            'median_latency': float,
+            'min_latency': int,
+            'max_latency': int,
         }
 
     Example:
         >>> metrics = evaluate_checkpoint_programmatic(
         ...     checkpoint_path='model.pth',
-        ...     csv_files=['p15_open_1.csv', 'p15_close_1.csv']
+        ...     csv_files=['p15_open_1.csv', 'p15_close_1.csv'],
+        ...     compute_latency=True,
         ... )
         >>> print(f"Transition accuracy: {metrics['transition_accuracy']:.4f}")
+        >>> print(f"Average latency: {metrics['average_latency']:.1f} timesteps")
     """
     # Standard evaluation parameters
     eval_batch_size = 1
@@ -1811,7 +1934,7 @@ def evaluate_checkpoint_programmatic(
     sample_range = None
 
     # Call main evaluation function
-    transition_acc, raw_acc = main(
+    result = main(
         saved_checkpoint_pth=checkpoint_path,
         eval_batch_size=eval_batch_size,
         eval_task=eval_task,
@@ -1832,12 +1955,55 @@ def evaluate_checkpoint_programmatic(
         verbose=verbose,
         model_choice=model_choice,
         sample_range=sample_range,
+        return_per_file_data=compute_latency,
     )
 
-    return {
-        'transition_accuracy': transition_acc,
-        'raw_accuracy': raw_acc,
-    }
+    if compute_latency:
+        transition_acc, raw_acc, results_across_files = result
+
+        # Compute latency across all files
+        all_latency_values = []
+        for csv_path, file_results, pred_seq, gt_seq in results_across_files:
+            transition_reasons = file_results["transition_reasons"]
+            latency_result = compute_latency_from_sequences(
+                pred_seq=pred_seq,
+                gt_seq=gt_seq,
+                transition_reasons=transition_reasons,
+                buffer_range=buffer_range,
+            )
+            all_latency_values.extend(latency_result['latency_values'])
+
+        # Aggregate latency statistics
+        if all_latency_values:
+            latency_metrics = {
+                'average_latency': float(np.mean(all_latency_values)),
+                'std_latency': float(np.std(all_latency_values, ddof=1 if len(all_latency_values) > 1 else 0)),
+                'median_latency': float(np.median(all_latency_values)),
+                'min_latency': int(np.min(all_latency_values)),
+                'max_latency': int(np.max(all_latency_values)),
+                'num_latency_samples': len(all_latency_values),
+            }
+        else:
+            latency_metrics = {
+                'average_latency': 0.0,
+                'std_latency': 0.0,
+                'median_latency': 0.0,
+                'min_latency': 0,
+                'max_latency': 0,
+                'num_latency_samples': 0,
+            }
+
+        return {
+            'transition_accuracy': transition_acc,
+            'raw_accuracy': raw_acc,
+            **latency_metrics,
+        }
+    else:
+        transition_acc, raw_acc = result
+        return {
+            'transition_accuracy': transition_acc,
+            'raw_accuracy': raw_acc,
+        }
 
 
 ###############################################################################
