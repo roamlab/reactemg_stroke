@@ -7,6 +7,7 @@ to select the best hyperparameters for each fine-tuning strategy.
 
 import os
 import sys
+import glob
 import itertools
 import subprocess
 import json
@@ -56,8 +57,6 @@ def get_fold_files(participant_folder: str, fold_idx: int) -> Tuple[List[str], L
     Returns:
         (train_files, val_files) where each is a list of file paths
     """
-    import glob
-
     # All baseline files
     all_sets = []
     for set_num in range(1, 5):
@@ -173,7 +172,6 @@ def run_training(
     # Find the saved checkpoint
     # Sort by name descending to get the most recent (timestamps are in YYYY-MM-DD_HH-MM-SS format)
     checkpoint_dir_pattern = f"model_checkpoints/{exp_name}_*"
-    import glob
     checkpoint_dirs = sorted(glob.glob(checkpoint_dir_pattern), reverse=True)
     if len(checkpoint_dirs) == 0:
         raise FileNotFoundError(f"No checkpoint found matching pattern: {checkpoint_dir_pattern}")

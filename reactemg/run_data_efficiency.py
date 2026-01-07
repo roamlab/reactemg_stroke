@@ -20,6 +20,7 @@ from event_classification import evaluate_checkpoint_programmatic
 
 # Configuration
 PARTICIPANTS = {
+    'p4': '~/Workspace/myhand/src/collected_data/2026_01_06',
     'p15': '~/Workspace/myhand/src/collected_data/2025_12_04',
     'p20': '~/Workspace/myhand/src/collected_data/2025_12_18',
 }
@@ -43,6 +44,16 @@ def get_test_files(participant_folder: str, condition: str) -> List[str]:
         files = glob.glob(os.path.join(participant_folder, f"*_{pattern}"))
         if len(files) == 1:
             test_files.append(files[0])
+        elif len(files) == 0:
+            raise FileNotFoundError(
+                f"No files found matching pattern '*_{pattern}' in {participant_folder}. "
+                f"Expected file for condition '{condition}'."
+            )
+        else:
+            raise ValueError(
+                f"Found {len(files)} files matching pattern '*_{pattern}' in {participant_folder}, "
+                f"expected exactly 1. Matches: {files}"
+            )
     return test_files
 
 
@@ -168,19 +179,22 @@ def train_with_sampled_data(
         cmd.extend(["--use_lora", "1", "--lora_rank", "16", "--lora_alpha", "8", "--lora_dropout_p", "0.05"])
     elif variant == 'full_finetune':
         cmd.extend(["--saved_checkpoint_pth", pretrained_checkpoint])
-    # stroke_only would omit checkpoint
+    elif variant == 'stroke_only':
+        pass  # Train from scratch, no pretrained checkpoint
+    else:
+        raise ValueError(f"Unknown variant: {variant}")
 
     # Run training
     print(f"\nTraining {exp_name}...")
     subprocess.run(cmd, check=True)
 
     # Find checkpoint
-    checkpoint_dir = f"model_checkpoints/{exp_name}_*"
-    checkpoint_dirs = glob.glob(checkpoint_dir)
+    checkpoint_dir_pattern = f"model_checkpoints/{exp_name}_*"
+    checkpoint_dirs = sorted(glob.glob(checkpoint_dir_pattern), reverse=True)
     if len(checkpoint_dirs) == 0:
         raise FileNotFoundError(f"No checkpoint found for {exp_name}")
 
-    checkpoint_dir = checkpoint_dirs[0]
+    checkpoint_dir = checkpoint_dirs[0]  # Most recent
     # Epochs are 0-indexed, so final epoch is epochs-1
     final_epoch = best_config['epochs'] - 1
     epoch_files = glob.glob(os.path.join(checkpoint_dir, f"epoch_{final_epoch}.pth"))
@@ -230,14 +244,19 @@ def evaluate_on_all_conditions(
             stride=1,
             model_choice="any2any",
             verbose=0,
+            compute_latency=True,
         )
+
+        # Convert latency from timesteps to ms (200 Hz = 5ms per timestep)
+        latency_ms = int(round(metrics.get('average_latency', 0) * 5.0))
 
         results[condition] = {
             'transition_accuracy': float(metrics['transition_accuracy']),
             'raw_accuracy': float(metrics['raw_accuracy']),
+            'avg_detection_latency_ms': latency_ms,
         }
 
-        print(f"  {condition}: Trans={metrics['transition_accuracy']:.4f}, Raw={metrics['raw_accuracy']:.4f}")
+        print(f"  {condition}: Trans={metrics['transition_accuracy']:.4f}, Raw={metrics['raw_accuracy']:.4f}, Latency={latency_ms}ms")
 
     return results
 
@@ -339,6 +358,7 @@ def run_data_efficiency_experiment(
         for condition in TEST_CONDITIONS.keys():
             trans_accs = [r[condition]['transition_accuracy'] for r in all_trial_results if condition in r]
             raw_accs = [r[condition]['raw_accuracy'] for r in all_trial_results if condition in r]
+            latencies = [r[condition]['avg_detection_latency_ms'] for r in all_trial_results if condition in r]
 
             if len(trans_accs) > 0:
                 aggregated_results[condition] = {
@@ -346,6 +366,8 @@ def run_data_efficiency_experiment(
                     'transition_accuracy_std': float(np.std(trans_accs)),
                     'raw_accuracy_mean': float(np.mean(raw_accs)),
                     'raw_accuracy_std': float(np.std(raw_accs)),
+                    'avg_detection_latency_ms_mean': int(round(np.mean(latencies))),
+                    'avg_detection_latency_ms_std': int(round(np.std(latencies))),
                 }
 
         # Save aggregated results
@@ -367,6 +389,7 @@ def run_data_efficiency_experiment(
             print(f"  {condition}:")
             print(f"    Trans Acc: {metrics['transition_accuracy_mean']:.4f} ± {metrics['transition_accuracy_std']:.4f}")
             print(f"    Raw Acc: {metrics['raw_accuracy_mean']:.4f} ± {metrics['raw_accuracy_std']:.4f}")
+            print(f"    Latency: {metrics['avg_detection_latency_ms_mean']} ± {metrics['avg_detection_latency_ms_std']} ms")
         print(f"{'*'*80}\n")
 
     print(f"\nData efficiency experiment complete for {participant}!")

@@ -20,6 +20,7 @@ from event_classification import evaluate_checkpoint_programmatic
 
 # Configuration
 PARTICIPANTS = {
+    'p4': '~/Workspace/myhand/src/collected_data/2026_01_06',
     'p15': '~/Workspace/myhand/src/collected_data/2025_12_04',
     'p20': '~/Workspace/myhand/src/collected_data/2025_12_18',
 }
@@ -59,6 +60,11 @@ def get_healthy_s25_files(s25_path: str = None) -> List[str]:
         if ('_static_' in f or '_grasp_' in f) and 'movement' not in f.lower()
     ]
 
+    if len(s25_files) == 0:
+        raise ValueError(
+            f"No s25 files found matching filter (static/grasp, excluding movement) in {s25_path}"
+        )
+
     print(f"Found {len(s25_files)} s25 evaluation files:")
     for f in s25_files:
         print(f"  - {os.path.basename(f)}")
@@ -74,6 +80,16 @@ def get_test_files(participant_folder: str, condition: str) -> List[str]:
         files = glob.glob(os.path.join(participant_folder, f"*_{pattern}"))
         if len(files) == 1:
             test_files.append(files[0])
+        elif len(files) == 0:
+            raise FileNotFoundError(
+                f"No files found matching pattern '*_{pattern}' in {participant_folder}. "
+                f"Expected file for condition '{condition}'."
+            )
+        else:
+            raise ValueError(
+                f"Found {len(files)} files matching pattern '*_{pattern}' in {participant_folder}, "
+                f"expected exactly 1. Matches: {files}"
+            )
     return test_files
 
 
@@ -132,7 +148,8 @@ def train_with_extended_epochs(
     # Symlink calibration files
     for calib_file in calib_files:
         link_path = os.path.join(train_dir, os.path.basename(calib_file))
-        if os.path.exists(link_path):
+        # Use lexists() to detect broken symlinks (exists() returns False for broken symlinks)
+        if os.path.lexists(link_path):
             os.remove(link_path)
         os.symlink(calib_file, link_path)
 
@@ -162,7 +179,9 @@ def train_with_extended_epochs(
     ]
 
     # Add variant-specific flags
-    if variant == 'head_only':
+    if variant == 'stroke_only':
+        pass  # Train from scratch, no pretrained checkpoint
+    elif variant == 'head_only':
         cmd.extend(["--saved_checkpoint_pth", pretrained_checkpoint])
         cmd.extend(["--freeze_backbone", "1"])
     elif variant == 'lora':
@@ -170,18 +189,24 @@ def train_with_extended_epochs(
         cmd.extend(["--use_lora", "1", "--lora_rank", "16", "--lora_alpha", "8", "--lora_dropout_p", "0.05"])
     elif variant == 'full_finetune':
         cmd.extend(["--saved_checkpoint_pth", pretrained_checkpoint])
+    else:
+        raise ValueError(f"Unknown variant: {variant}")
 
     # Run training
     print("\nStarting extended training...")
     subprocess.run(cmd, check=True)
 
     # Find checkpoint directory
-    checkpoint_dir = f"model_checkpoints/{exp_name}_*"
-    checkpoint_dirs = glob.glob(checkpoint_dir)
+    # Sort by name descending to get the most recent (timestamps are in YYYY-MM-DD_HH-MM-SS format)
+    checkpoint_dir_pattern = f"model_checkpoints/{exp_name}_*"
+    checkpoint_dirs = sorted(glob.glob(checkpoint_dir_pattern), reverse=True)
     if len(checkpoint_dirs) == 0:
         raise FileNotFoundError(f"No checkpoint directory found for {exp_name}")
 
     checkpoint_dir = checkpoint_dirs[0]
+    if len(checkpoint_dirs) > 1:
+        print(f"Note: Found {len(checkpoint_dirs)} checkpoint directories matching '{exp_name}_*', "
+              f"using most recent: {os.path.basename(checkpoint_dir)}")
 
     # Copy all epoch checkpoints to organized location
     convergence_checkpoint_dir = f"model_checkpoints/convergence/{participant}"
@@ -226,6 +251,7 @@ def evaluate_epoch_checkpoint(
     print("Evaluating on stroke test sets...")
     stroke_trans_accs = []
     stroke_raw_accs = []
+    stroke_latencies = []
 
     for condition in TEST_CONDITIONS.keys():
         test_files = get_test_files(participant_folder, condition)
@@ -242,21 +268,28 @@ def evaluate_epoch_checkpoint(
             stride=1,
             model_choice="any2any",
             verbose=0,
+            compute_latency=True,
         )
+
+        # Convert latency from timesteps to ms (200 Hz = 5ms per timestep)
+        latency_ms = float(metrics.get('average_latency', 0)) * 5.0
 
         results['stroke_results'][condition] = {
             'transition_accuracy': float(metrics['transition_accuracy']),
             'raw_accuracy': float(metrics['raw_accuracy']),
+            'avg_detection_latency_ms': latency_ms,
         }
 
         stroke_trans_accs.append(metrics['transition_accuracy'])
         stroke_raw_accs.append(metrics['raw_accuracy'])
+        stroke_latencies.append(latency_ms)
 
-        print(f"  {condition}: Trans={metrics['transition_accuracy']:.4f}")
+        print(f"  {condition}: Trans={metrics['transition_accuracy']:.4f}, Latency={latency_ms:.1f}ms")
 
     # Compute average stroke metrics
     results['stroke_avg_transition_acc'] = float(np.mean(stroke_trans_accs)) if stroke_trans_accs else 0.0
     results['stroke_avg_raw_acc'] = float(np.mean(stroke_raw_accs)) if stroke_raw_accs else 0.0
+    results['stroke_avg_latency_ms'] = float(np.mean(stroke_latencies)) if stroke_latencies else 0.0
 
     # Evaluate on healthy s25 data
     print("Evaluating on healthy s25 data...")
@@ -270,16 +303,21 @@ def evaluate_epoch_checkpoint(
         stride=1,
         model_choice="any2any",
         verbose=0,
+        compute_latency=True,
     )
+
+    # Convert latency from timesteps to ms (200 Hz = 5ms per timestep)
+    healthy_latency_ms = float(healthy_metrics.get('average_latency', 0)) * 5.0
 
     results['healthy_results'] = {
         'transition_accuracy': float(healthy_metrics['transition_accuracy']),
         'raw_accuracy': float(healthy_metrics['raw_accuracy']),
+        'avg_detection_latency_ms': healthy_latency_ms,
     }
 
-    print(f"  s25: Trans={healthy_metrics['transition_accuracy']:.4f}")
+    print(f"  s25: Trans={healthy_metrics['transition_accuracy']:.4f}, Latency={healthy_latency_ms:.1f}ms")
 
-    print(f"Epoch {epoch} - Stroke Avg: {results['stroke_avg_transition_acc']:.4f}, Healthy: {results['healthy_results']['transition_accuracy']:.4f}")
+    print(f"Epoch {epoch} - Stroke Avg: {results['stroke_avg_transition_acc']:.4f} (Latency: {results['stroke_avg_latency_ms']:.1f}ms), Healthy: {results['healthy_results']['transition_accuracy']:.4f}")
 
     return results
 
@@ -299,7 +337,7 @@ def evaluate_frozen_baseline(
         participant=participant,
         participant_folder=participant_folder,
         checkpoint_path=pretrained_checkpoint,
-        epoch=0,  # Epoch 0 denotes frozen baseline
+        epoch=-1,  # Use -1 to distinguish from trained epoch 0
         s25_files=s25_files,
     )
 

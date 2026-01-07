@@ -182,7 +182,7 @@ def sample_repetitions(
         >>> k4_samples = sample_repetitions(paired_reps, budget_k=4)
     """
     np.random.seed(seed)
-    all_g_names = sorted(paired_reps.keys())  # g_0 through g_11
+    all_g_names = sorted(paired_reps.keys(), key=lambda x: int(x.split('_')[1]))  # g_0 through g_11
 
     if budget_k > len(all_g_names):
         raise ValueError(
