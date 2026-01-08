@@ -396,7 +396,13 @@ def run_convergence_study(
     extended_epochs = best_config['epochs'] * 10
     all_epoch_results = []
 
-    for epoch in range(extended_epochs):
+    # Evaluate every 10 epochs (and always include the last epoch)
+    eval_interval = 10
+    eval_epochs = list(range(0, extended_epochs, eval_interval))
+    if (extended_epochs - 1) not in eval_epochs:
+        eval_epochs.append(extended_epochs - 1)
+
+    for epoch in eval_epochs:
         checkpoint_path = os.path.join(checkpoint_dir, f"epoch_{epoch}.pth")
 
         if not os.path.exists(checkpoint_path):
@@ -435,34 +441,177 @@ def run_convergence_study(
     print(f"\nConvergence study complete for {participant}!")
 
 
+def find_config_file(participant: str, variant: str, config_dir: str = "temp_cv_checkpoints") -> str:
+    """
+    Auto-discover config file for a participant and variant.
+
+    Args:
+        participant: Participant ID (e.g., 'p15')
+        variant: Fine-tuning variant (e.g., 'lora')
+        config_dir: Directory containing CV results files
+
+    Returns:
+        Path to config file
+
+    Raises:
+        FileNotFoundError: If config file not found
+    """
+    config_pattern = os.path.join(config_dir, f"{participant}_{variant}_cv_results.json")
+    config_files = glob.glob(config_pattern)
+
+    if len(config_files) == 0:
+        raise FileNotFoundError(
+            f"No config file found for {participant}/{variant}. "
+            f"Expected: {config_pattern}\n"
+            f"Run the main experiment first, or provide --config_file explicitly."
+        )
+
+    return config_files[0]
+
+
+def run_all_participants(
+    variant: str,
+    config_file: str = None,
+    config_dir: str = "temp_cv_checkpoints",
+    healthy_s25_path: str = None,
+):
+    """
+    Run convergence study for all participants.
+
+    Args:
+        variant: Fine-tuning variant to use
+        config_file: Optional explicit config file (if provided, used for all participants)
+        config_dir: Directory to search for per-participant config files
+        healthy_s25_path: Path to healthy s25 data
+    """
+    print("\n" + "="*80)
+    print("Convergence Study - All Participants")
+    print("="*80 + "\n")
+
+    results_summary = {}
+
+    for participant, participant_folder in PARTICIPANTS.items():
+        participant_folder = os.path.expanduser(participant_folder)
+
+        print(f"\n{'#'*80}")
+        print(f"# Participant: {participant}")
+        print(f"{'#'*80}\n")
+
+        # Find or use config file
+        if config_file:
+            actual_config_file = config_file
+        else:
+            actual_config_file = find_config_file(participant, variant, config_dir)
+
+        print(f"Using config file: {actual_config_file}")
+
+        # Load config
+        with open(actual_config_file, 'r') as f:
+            config_data = json.load(f)
+            best_config = config_data['best_config']
+
+        # Run convergence study
+        run_convergence_study(
+            participant=participant,
+            participant_folder=participant_folder,
+            variant=variant,
+            best_config=best_config,
+            pretrained_checkpoint=PRETRAINED_CHECKPOINT,
+            healthy_s25_path=healthy_s25_path,
+        )
+
+        results_summary[participant] = {
+            'status': 'completed',
+            'config_file': actual_config_file,
+            'results_dir': f"results/convergence/{participant}",
+        }
+
+    # Print summary
+    print("\n" + "="*80)
+    print("Convergence Study Complete - All Participants")
+    print("="*80)
+    for p, info in results_summary.items():
+        print(f"  {p}: {info['status']} -> {info['results_dir']}")
+    print("="*80 + "\n")
+
+
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Convergence Study")
-    parser.add_argument("--participant", required=True, help="Participant ID (e.g., p15)")
+    parser = argparse.ArgumentParser(
+        description="Convergence Study",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Run for a single participant (requires --config_file)
+  python3 run_convergence.py --participant p15 --variant lora --config_file temp_cv_checkpoints/p15_lora_cv_results.json
+
+  # Run for all participants (auto-discovers config files)
+  python3 run_convergence.py --participant all --variant lora
+
+  # Run for all participants with explicit config directory
+  python3 run_convergence.py --participant all --variant lora --config_dir temp_cv_checkpoints
+        """
+    )
+    parser.add_argument(
+        "--participant",
+        type=str,
+        choices=['p4', 'p15', 'p20', 'all'],
+        required=True,
+        help="Participant ID (p4, p15, p20) or 'all' to run all participants"
+    )
     parser.add_argument("--variant", required=True, help="Best fine-tuning variant")
-    parser.add_argument("--config_file", required=True, help="Path to best config JSON file")
-    parser.add_argument("--healthy_s25_path",
-                       default="~/Workspace/reactemg/data/ROAM_EMG/s25",
-                       help="Path to healthy s25 data for catastrophic forgetting evaluation")
+    parser.add_argument(
+        "--config_file",
+        help="Path to best config JSON file (required for single participant, optional for 'all')"
+    )
+    parser.add_argument(
+        "--config_dir",
+        default="temp_cv_checkpoints",
+        help="Directory containing CV results files (used when --participant all)"
+    )
+    parser.add_argument(
+        "--healthy_s25_path",
+        default="~/Workspace/reactemg/data/ROAM_EMG/s25",
+        help="Path to healthy s25 data for catastrophic forgetting evaluation"
+    )
 
     args = parser.parse_args()
 
-    participant = args.participant
-    participant_folder = os.path.expanduser(PARTICIPANTS[participant])
+    if args.participant == 'all':
+        # Run all participants
+        run_all_participants(
+            variant=args.variant,
+            config_file=args.config_file,
+            config_dir=args.config_dir,
+            healthy_s25_path=args.healthy_s25_path,
+        )
+    else:
+        # Run single participant
+        if not args.config_file:
+            # Try to auto-discover
+            try:
+                args.config_file = find_config_file(args.participant, args.variant)
+                print(f"Auto-discovered config file: {args.config_file}")
+            except FileNotFoundError as e:
+                print(f"Error: {e}")
+                print("Please provide --config_file explicitly.")
+                sys.exit(1)
 
-    # Load best config
-    with open(args.config_file, 'r') as f:
-        config_data = json.load(f)
-        best_config = config_data['best_config']
+        participant_folder = os.path.expanduser(PARTICIPANTS[args.participant])
 
-    run_convergence_study(
-        participant=participant,
-        participant_folder=participant_folder,
-        variant=args.variant,
-        best_config=best_config,
-        pretrained_checkpoint=PRETRAINED_CHECKPOINT,
-        healthy_s25_path=args.healthy_s25_path,
-    )
+        # Load best config
+        with open(args.config_file, 'r') as f:
+            config_data = json.load(f)
+            best_config = config_data['best_config']
+
+        run_convergence_study(
+            participant=args.participant,
+            participant_folder=participant_folder,
+            variant=args.variant,
+            best_config=best_config,
+            pretrained_checkpoint=PRETRAINED_CHECKPOINT,
+            healthy_s25_path=args.healthy_s25_path,
+        )
 
     print("\nConvergence study complete!")
