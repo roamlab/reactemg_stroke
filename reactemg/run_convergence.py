@@ -209,7 +209,7 @@ def train_with_extended_epochs(
               f"using most recent: {os.path.basename(checkpoint_dir)}")
 
     # Copy all epoch checkpoints to organized location
-    convergence_checkpoint_dir = f"model_checkpoints/convergence/{participant}"
+    convergence_checkpoint_dir = f"model_checkpoints/convergence/{variant}/{participant}"
     os.makedirs(convergence_checkpoint_dir, exist_ok=True)
 
     import shutil
@@ -377,7 +377,7 @@ def run_convergence_study(
     )
 
     # Save frozen baseline
-    frozen_results_dir = f"results/convergence/{participant}/frozen_baseline"
+    frozen_results_dir = f"results/convergence/{variant}/{participant}/frozen_baseline"
     os.makedirs(frozen_results_dir, exist_ok=True)
     with open(os.path.join(frozen_results_dir, "metrics.json"), 'w') as f:
         json.dump(frozen_baseline_results, f, indent=4)
@@ -420,13 +420,13 @@ def run_convergence_study(
         all_epoch_results.append(epoch_results)
 
         # Save individual epoch results
-        epoch_results_dir = f"results/convergence/{participant}/epoch_{epoch}"
+        epoch_results_dir = f"results/convergence/{variant}/{participant}/epoch_{epoch}"
         os.makedirs(epoch_results_dir, exist_ok=True)
         with open(os.path.join(epoch_results_dir, "metrics.json"), 'w') as f:
             json.dump(epoch_results, f, indent=4)
 
     # Save convergence curves data
-    curves_file = f"results/convergence/{participant}/convergence_curves.json"
+    curves_file = f"results/convergence/{variant}/{participant}/convergence_curves.json"
     with open(curves_file, 'w') as f:
         json.dump({
             'participant': participant,
@@ -523,7 +523,7 @@ def run_all_participants(
         results_summary[participant] = {
             'status': 'completed',
             'config_file': actual_config_file,
-            'results_dir': f"results/convergence/{participant}",
+            'results_dir': f"results/convergence/{variant}/{participant}",
         }
 
     # Print summary

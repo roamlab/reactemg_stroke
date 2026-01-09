@@ -204,9 +204,9 @@ def train_with_sampled_data(
     checkpoint_path = epoch_files[0]
 
     # Copy to organized location
-    final_checkpoint_dir = f"model_checkpoints/data_efficiency/{participant}"
+    final_checkpoint_dir = f"model_checkpoints/data_efficiency/{variant}/{participant}"
     os.makedirs(final_checkpoint_dir, exist_ok=True)
-    final_checkpoint_path = os.path.join(final_checkpoint_dir, f"{variant}_K{budget_k}_trial{trial_idx}.pth")
+    final_checkpoint_path = os.path.join(final_checkpoint_dir, f"K{budget_k}_trial{trial_idx}.pth")
 
     import shutil
     shutil.copy(checkpoint_path, final_checkpoint_path)
@@ -283,10 +283,12 @@ def run_data_efficiency_experiment(
     print(f"{'='*80}\n")
 
     # Get paired repetition indices
+    # crop_relax=False: include full natural relax segments (matching main_experiment/convergence)
     paired_reps = get_paired_repetition_indices(
         participant_folder=participant_folder,
         num_sets=4,
         reps_per_set=3,
+        crop_relax=False,
     )
 
     print(f"Found {len(paired_reps)} paired repetitions (g_0 through g_11)")
@@ -338,7 +340,7 @@ def run_data_efficiency_experiment(
             )
 
             # Save individual trial results
-            trial_results_dir = f"results/data_efficiency/{participant}/K{budget_k}/trial_{trial_idx}"
+            trial_results_dir = f"results/data_efficiency/{variant}/{participant}/K{budget_k}/trial_{trial_idx}"
             os.makedirs(trial_results_dir, exist_ok=True)
 
             with open(os.path.join(trial_results_dir, "metrics.json"), 'w') as f:
@@ -371,7 +373,7 @@ def run_data_efficiency_experiment(
                 }
 
         # Save aggregated results
-        agg_file = f"results/data_efficiency/{participant}/K{budget_k}/aggregated_metrics.json"
+        agg_file = f"results/data_efficiency/{variant}/{participant}/K{budget_k}/aggregated_metrics.json"
         os.makedirs(os.path.dirname(agg_file), exist_ok=True)
 
         with open(agg_file, 'w') as f:
@@ -474,7 +476,7 @@ def run_all_participants(
         results_summary[participant] = {
             'status': 'completed',
             'config_file': actual_config_file,
-            'results_dir': f"results/data_efficiency/{participant}",
+            'results_dir': f"results/data_efficiency/{variant}/{participant}",
         }
 
     # Print summary

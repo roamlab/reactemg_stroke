@@ -8,18 +8,20 @@ import numpy as np
 from typing import List, Tuple, Dict
 
 
-def extract_repetition_units(csv_path: str, gesture_type: str) -> List[Tuple[int, int]]:
+def extract_repetition_units(
+    csv_path: str,
+    gesture_type: str,
+    crop_relax: bool = True,
+) -> List[Tuple[int, int]]:
     """
     Extract individual R-O-R or R-C-R units from a CSV file.
-
-    Each unit includes:
-    - 3 seconds (600 samples at 200Hz) of relax before gesture
-    - Full gesture duration
-    - 3 seconds (600 samples at 200Hz) of relax after gesture
 
     Args:
         csv_path: Path to CSV file with 'gt' column
         gesture_type: 'open' (label=1) or 'close' (label=2)
+        crop_relax: If True (default), crop relax to 600 samples (3 sec) on each side.
+                    If False, include full natural relax segments using midpoint boundaries
+                    between adjacent gestures (matching main_experiment/convergence behavior).
 
     Returns:
         List of (start_idx, end_idx) tuples for each repetition.
@@ -47,9 +49,8 @@ def extract_repetition_units(csv_path: str, gesture_type: str) -> List[Tuple[int
     else:
         raise ValueError(f"gesture_type must be 'open' or 'close', got '{gesture_type}'")
 
-    repetitions = []
-
-    # Find all occurrences of 0 -> target_label -> 0 pattern
+    # First pass: find all gesture boundaries
+    gestures = []  # list of (gesture_start, gesture_end)
     i = 0
     while i < len(gt) - 1:
         # Find transition from 0 (relax) to target_label (gesture)
@@ -62,18 +63,41 @@ def extract_repetition_units(csv_path: str, gesture_type: str) -> List[Tuple[int
                 j += 1
             gesture_end = j  # First index back to relax (0)
 
-            # Add 3 seconds (600 samples at 200Hz) before and after
-            # Clamp to valid indices
-            padding_samples = 600
-            start_idx = max(0, gesture_start - padding_samples)
-            end_idx = min(len(gt), gesture_end + padding_samples)
-
-            repetitions.append((start_idx, end_idx))
+            gestures.append((gesture_start, gesture_end))
 
             # Move past this gesture
             i = gesture_end
         else:
             i += 1
+
+    # Second pass: create segments with appropriate relax boundaries
+    repetitions = []
+    for idx, (gesture_start, gesture_end) in enumerate(gestures):
+        if crop_relax:
+            # Original behavior: crop to 600 samples (3 sec at 200Hz) on each side
+            padding_samples = 600
+            start_idx = max(0, gesture_start - padding_samples)
+            end_idx = min(len(gt), gesture_end + padding_samples)
+        else:
+            # New behavior: include full natural relax segments
+            # Use midpoint boundaries between adjacent gestures to avoid overlap
+            if idx == 0:
+                # First gesture: start from beginning of file
+                start_idx = 0
+            else:
+                # Start from midpoint between previous gesture end and this gesture start
+                prev_gesture_end = gestures[idx - 1][1]
+                start_idx = (prev_gesture_end + gesture_start) // 2
+
+            if idx == len(gestures) - 1:
+                # Last gesture: end at end of file
+                end_idx = len(gt)
+            else:
+                # End at midpoint between this gesture end and next gesture start
+                next_gesture_start = gestures[idx + 1][0]
+                end_idx = (gesture_end + next_gesture_start) // 2
+
+        repetitions.append((start_idx, end_idx))
 
     return repetitions
 
@@ -81,7 +105,8 @@ def extract_repetition_units(csv_path: str, gesture_type: str) -> List[Tuple[int
 def get_paired_repetition_indices(
     participant_folder: str,
     num_sets: int = 4,
-    reps_per_set: int = 3
+    reps_per_set: int = 3,
+    crop_relax: bool = True,
 ) -> Dict[str, Tuple[str, str, List[Tuple[int, int]], List[Tuple[int, int]]]]:
     """
     Generate g_0 through g_11 paired repetition index mapping.
@@ -94,6 +119,8 @@ def get_paired_repetition_indices(
         participant_folder: Path to participant data folder
         num_sets: Number of baseline sets (default 4)
         reps_per_set: Number of repetitions per set (default 3)
+        crop_relax: If True (default), crop relax to 600 samples on each side.
+                    If False, include full natural relax segments.
 
     Returns:
         Dict mapping g_i to (open_file, close_file, open_rep_indices, close_rep_indices)
@@ -129,8 +156,8 @@ def get_paired_repetition_indices(
         close_file = close_files[0]
 
         # Extract repetitions
-        open_reps = extract_repetition_units(open_file, 'open')
-        close_reps = extract_repetition_units(close_file, 'close')
+        open_reps = extract_repetition_units(open_file, 'open', crop_relax=crop_relax)
+        close_reps = extract_repetition_units(close_file, 'close', crop_relax=crop_relax)
 
         if len(open_reps) != reps_per_set or len(close_reps) != reps_per_set:
             raise ValueError(
