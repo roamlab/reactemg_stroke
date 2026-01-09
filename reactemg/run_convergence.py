@@ -2,9 +2,9 @@
 Convergence study for ReactEMG stroke.
 
 This script:
-1. Trains a model for 10× the optimal number of epochs
+1. Trains a model for 100 epochs (fixed)
 2. Saves checkpoints at every epoch
-3. Evaluates each checkpoint on both stroke test sets and healthy s25 data
+3. Evaluates checkpoints every 5 epochs on both stroke test sets and healthy s25 data
 4. Tracks convergence and potential catastrophic forgetting
 """
 
@@ -110,7 +110,7 @@ def train_with_extended_epochs(
     variant: str,
     best_config: Dict,
     pretrained_checkpoint: str,
-    extended_multiplier: int = 10,
+    total_epochs: int = 100,
 ) -> str:
     """
     Train model for extended epochs, saving checkpoint at every epoch.
@@ -121,7 +121,7 @@ def train_with_extended_epochs(
         variant: Fine-tuning variant
         best_config: Best hyperparameters
         pretrained_checkpoint: Path to pretrained checkpoint
-        extended_multiplier: Multiply epochs by this factor (default 10)
+        total_epochs: Total number of epochs to train (default 100)
 
     Returns:
         Directory containing all epoch checkpoints
@@ -130,12 +130,10 @@ def train_with_extended_epochs(
     print(f"Extended Training: {participant} - {variant}")
     print(f"{'='*80}\n")
 
-    # Calculate extended epochs
-    base_epochs = best_config['epochs']
-    extended_epochs = base_epochs * extended_multiplier
+    # Use fixed total epochs
+    extended_epochs = total_epochs
 
-    print(f"Base epochs: {base_epochs}")
-    print(f"Extended epochs: {extended_epochs}")
+    print(f"Training for {extended_epochs} epochs")
 
     # Get calibration files
     calib_files = get_all_calibration_files(participant_folder)
@@ -389,15 +387,15 @@ def run_convergence_study(
         variant=variant,
         best_config=best_config,
         pretrained_checkpoint=pretrained_checkpoint,
-        extended_multiplier=10,
+        total_epochs=100,
     )
 
     # Evaluate each epoch checkpoint (epochs are 0-indexed)
-    extended_epochs = best_config['epochs'] * 10
+    extended_epochs = 100
     all_epoch_results = []
 
-    # Evaluate every 10 epochs (and always include the last epoch)
-    eval_interval = 10
+    # Evaluate every 5 epochs (and always include the last epoch)
+    eval_interval = 5
     eval_epochs = list(range(0, extended_epochs, eval_interval))
     if (extended_epochs - 1) not in eval_epochs:
         eval_epochs.append(extended_epochs - 1)
@@ -431,8 +429,9 @@ def run_convergence_study(
         json.dump({
             'participant': participant,
             'variant': variant,
-            'base_epochs': best_config['epochs'],
-            'extended_epochs': extended_epochs,
+            'cv_best_epochs': best_config['epochs'],
+            'total_epochs': extended_epochs,
+            'eval_interval': eval_interval,
             'frozen_baseline': frozen_baseline_results,
             'epoch_results': all_epoch_results,
         }, f, indent=4)

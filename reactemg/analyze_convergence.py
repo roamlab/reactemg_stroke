@@ -10,6 +10,9 @@ Usage:
     python3 analyze_convergence.py --variant lora --participant p15
     python3 analyze_convergence.py --variant head_only --participant p20
     python3 analyze_convergence.py --variant lora --participant p4 --output my_plot.png
+
+    # Compare LoRA vs Full Finetune for p15:
+    python3 analyze_convergence.py --compare --output comparison.png
 """
 
 import argparse
@@ -18,7 +21,11 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import matplotlib.pyplot as plt
+import seaborn as sns
 import numpy as np
+
+
+PARTICIPANT_LABELS = {"p4": "s1", "p15": "s2", "p20": "s3"}
 
 
 CONDITIONS = [
@@ -238,26 +245,136 @@ def print_summary(participant: str, plot_data: Dict):
     print(f"{'='*65}\n")
 
 
+def plot_variant_comparison(
+    participant: str = "p15",
+    results_dir: str = None,
+    output_path: str = None,
+):
+    """
+    Create a two-column comparison plot for LoRA vs Full Finetune convergence.
+
+    Args:
+        participant: Participant ID (default: p15)
+        results_dir: Path to results directory
+        output_path: Path to save the plot
+    """
+    # Set seaborn style for clean, publication-quality plots
+    sns.set_theme(style="white", context="paper", font_scale=1.2)
+
+    # Use a clean color palette
+    palette = sns.color_palette("deep", n_colors=4)
+    stroke_color = palette[0]  # Blue
+    healthy_color = palette[1]  # Orange
+    stroke_baseline_color = palette[2]  # Green
+    healthy_baseline_color = palette[3]  # Red
+
+    variants = ["lora", "full_finetune"]
+    variant_titles = {"lora": "LoRA", "full_finetune": "Full Fine-tune"}
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
+
+    for idx, variant in enumerate(variants):
+        ax = axes[idx]
+
+        try:
+            data = load_convergence_data(variant, participant, results_dir)
+            plot_data = extract_plot_data(data)
+        except FileNotFoundError:
+            print(f"Warning: No data found for {variant}/{participant}")
+            ax.text(0.5, 0.5, "No data available", ha='center', va='center',
+                    transform=ax.transAxes, fontsize=12)
+            ax.set_title(variant_titles[variant], fontsize=14, fontweight='semibold', pad=12)
+            continue
+
+        epochs = plot_data["epochs"]
+        stroke_accs = plot_data["stroke_accs"]
+        healthy_accs = plot_data["healthy_accs"]
+        frozen_stroke = plot_data["frozen_stroke"]
+        frozen_healthy = plot_data["frozen_healthy"]
+
+        # Plot stroke performance
+        ax.plot(epochs, stroke_accs, marker='o', color=stroke_color,
+                linewidth=2.5, markersize=7, markeredgecolor='white',
+                markeredgewidth=1.5, label="Stroke")
+
+        # Plot healthy performance
+        ax.plot(epochs, healthy_accs, marker='s', color=healthy_color,
+                linewidth=2.5, markersize=7, markeredgecolor='white',
+                markeredgewidth=1.5, label="Healthy")
+
+        # Plot frozen baselines as horizontal dashed lines
+        ax.axhline(y=frozen_stroke, color=stroke_baseline_color, linestyle='--',
+                   linewidth=2, alpha=0.8, label="Frozen baseline (Stroke)")
+        ax.axhline(y=frozen_healthy, color=healthy_baseline_color, linestyle='--',
+                   linewidth=2, alpha=0.8, label="Frozen baseline (Healthy)")
+
+        # Configure axes
+        ax.set_xlabel("Epoch", fontsize=13)
+        if idx == 0:
+            ax.set_ylabel("Transition Accuracy", fontsize=13)
+        ax.set_title(variant_titles[variant], fontsize=14, fontweight='semibold', pad=12)
+        ax.set_ylim(0, 1)
+
+        # Remove top and right spines
+        sns.despine(ax=ax)
+
+        # Style tick labels
+        ax.tick_params(axis='both', which='major', labelsize=11)
+
+    # Add overall title
+    subject_label = PARTICIPANT_LABELS.get(participant, participant)
+    fig.suptitle(f"Convergence Comparison ({subject_label})", fontsize=16,
+                 fontweight='semibold', y=1.02)
+
+    # Single legend at the bottom, outside the axes, horizontal layout
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(
+        handles, labels,
+        loc='upper center',
+        bbox_to_anchor=(0.5, 0.02),
+        ncol=4,
+        frameon=False,
+        fontsize=11,
+        columnspacing=1.5
+    )
+
+    plt.tight_layout()
+
+    if output_path:
+        plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white',
+                    edgecolor='none')
+        print(f"Plot saved to {output_path}")
+    else:
+        plt.show()
+
+    plt.close(fig)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Analyze convergence experiment results and generate plot",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+    # Single variant analysis
     python3 analyze_convergence.py --variant lora --participant p4
     python3 analyze_convergence.py --variant lora --participant p15 --show
     python3 analyze_convergence.py -v head_only -p p20 --output my_plot.png
+
+    # Compare LoRA vs Full Finetune for p15 (s2)
+    python3 analyze_convergence.py --compare
+    python3 analyze_convergence.py --compare --output comparison.png
         """
     )
     parser.add_argument(
         "--variant", "-v",
-        required=True,
+        default=None,
         choices=['stroke_only', 'head_only', 'lora', 'full_finetune'],
         help="Fine-tuning variant (stroke_only, head_only, lora, full_finetune)"
     )
     parser.add_argument(
         "--participant", "-p",
-        required=True,
+        default=None,
         help="Participant ID (e.g., p4, p15, p20)"
     )
     parser.add_argument(
@@ -268,7 +385,7 @@ Examples:
     parser.add_argument(
         "--output", "-o",
         default=None,
-        help="Output path for the plot (default: results/convergence/{variant}/{participant}/convergence_plot.png)"
+        help="Output path for the plot"
     )
     parser.add_argument(
         "--show",
@@ -280,27 +397,44 @@ Examples:
         action="store_true",
         help="Skip printing the text summary"
     )
+    parser.add_argument(
+        "--compare",
+        action="store_true",
+        help="Create two-column comparison plot (LoRA vs Full Finetune for p15/s2)"
+    )
 
     args = parser.parse_args()
 
-    # Load data
-    data = load_convergence_data(args.variant, args.participant, args.results_dir)
+    if args.compare:
+        # Create comparison plot for p15
+        plot_variant_comparison(
+            participant="p15",
+            results_dir=args.results_dir,
+            output_path=args.output,
+        )
+    else:
+        # Single variant analysis
+        if args.variant is None or args.participant is None:
+            parser.error("--variant and --participant are required unless --compare is used")
 
-    # Extract plot data
-    plot_data = extract_plot_data(data)
+        # Load data
+        data = load_convergence_data(args.variant, args.participant, args.results_dir)
 
-    # Print summary
-    if not args.no_summary:
-        print_summary(args.participant, plot_data)
+        # Extract plot data
+        plot_data = extract_plot_data(data)
 
-    # Create plot
-    output_path = create_convergence_plot(
-        variant=args.variant,
-        participant=args.participant,
-        plot_data=plot_data,
-        output_path=args.output,
-        show_plot=args.show,
-    )
+        # Print summary
+        if not args.no_summary:
+            print_summary(args.participant, plot_data)
+
+        # Create plot
+        output_path = create_convergence_plot(
+            variant=args.variant,
+            participant=args.participant,
+            plot_data=plot_data,
+            output_path=args.output,
+            show_plot=args.show,
+        )
 
 
 if __name__ == "__main__":
