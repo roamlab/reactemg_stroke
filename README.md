@@ -4,21 +4,12 @@ This repository extends [ReactEMG](https://github.com/your-org/reactemg) to stud
 
 > **Prerequisites**: This repository builds on ReactEMG. For installation instructions, model architecture details, and background on the Any2Any transformer, see the [ReactEMG README](https://github.com/your-org/reactemg#readme).
 
-## Overview
-
-Stroke survivors often exhibit different EMG signal patterns due to motor impairments, making direct application of healthy-trained models suboptimal. This project investigates:
-
-1. **Transfer Learning Efficiency**: How well healthy-pretrained models adapt to stroke data
-2. **Fine-Tuning Strategy Comparison**: Zero-shot vs. stroke-only vs. head-only vs. LoRA vs. full fine-tuning
-3. **Few-Shot Adaptation**: Performance with minimal calibration data (K=1, 4, 8 repetitions)
-4. **Robustness to Domain Shift**: Evaluation across 5 different test conditions
-5. **Convergence Dynamics**: Learning curves and catastrophic forgetting analysis
-
 ## Participants & Data Structure
 
 ### Stroke Participants
-- **p15**, **p20**: Left-hand stroke survivors (primary participants)
-- **p4**: Additional participant (from 2026_01_06 dataset)
+- **p4**: Left-hand stroke survivor (data folder: `2026_01_06`)
+- **p15**: Left-hand stroke survivor (data folder: `2025_12_04`)
+- **p20**: Left-hand stroke survivor (data folder: `2025_12_18`)
 
 ### Data Organization
 
@@ -89,26 +80,20 @@ The experiments follow a three-stage pipeline:
 
 All commands assume you're in the `reactemg/` directory.
 
-### 1. Validation Tests
+### 1. Main Experiment (Full Pipeline)
 
-Verify implementations before running experiments:
+The main experiment script orchestrates zero-shot evaluation, hyperparameter search, final training, and evaluation for all strategies.
 
-```bash
-python3 test_implementations.py
-```
-
-### 2. Main Experiment (Full Pipeline)
-
-Run the complete experiment for all participants and strategies:
-
+**Run all participants:**
 ```bash
 python3 run_main_experiment.py --participant all
 ```
 
-Or for a specific participant:
-
+**Run a single participant:**
 ```bash
+python3 run_main_experiment.py --participant p4
 python3 run_main_experiment.py --participant p15
+python3 run_main_experiment.py --participant p20
 ```
 
 This orchestrates:
@@ -117,9 +102,9 @@ This orchestrates:
 - Final training with best hyperparameters
 - Evaluation on all 5 test conditions
 
-### 3. Hyperparameter Search (Single Strategy)
+### 2. Hyperparameter Search (Single Strategy)
 
-Run CV search for a specific strategy:
+Run CV search for a specific participant and strategy. This is useful for running individual strategies in parallel or re-running a specific search.
 
 ```bash
 python3 cv_hyperparameter_search.py \
@@ -132,16 +117,27 @@ python3 cv_hyperparameter_search.py \
 **Available variants**: `stroke_only`, `head_only`, `lora`, `full_finetune`
 
 **Search Space**:
-- Learning rate: [1e-5, 5e-5, 1e-4, 5e-4]
+- Learning rate: [5e-5, 1e-4, 5e-4]
 - Epochs: [5, 10, 15]
-- Dropout: [0.1, 0.3, 0.5]
+- Dropout: [0, 0.1, 0.2]
 
 Results saved to: `temp_cv_checkpoints/{participant}_{variant}_cv_results.json`
 
-### 4. Data Efficiency Experiment
+### 3. Data Efficiency Experiment
 
-Evaluate performance with limited calibration data:
+Evaluates performance with limited calibration data (K=1, 4, 8 paired repetitions) using 12 independent trials per K.
 
+**Run all participants:**
+```bash
+python3 run_data_efficiency.py --participant all --variant lora
+```
+
+**Run a single participant:**
+```bash
+python3 run_data_efficiency.py --participant p15 --variant lora
+```
+
+**With explicit config file:**
 ```bash
 python3 run_data_efficiency.py \
   --participant p15 \
@@ -149,125 +145,31 @@ python3 run_data_efficiency.py \
   --config_file temp_cv_checkpoints/p15_lora_cv_results.json
 ```
 
-Tests K=1, 4, 8 paired repetitions with 12 independent trials per K.
-
 **Sampling Strategy**:
 - K=1: Each trial uses exactly one unique repetition (trial i uses g_i)
 - K>1: Random sampling without replacement across all 12 repetitions
 
-### 5. Convergence Study
+### 4. Convergence Study
 
-Track learning dynamics and catastrophic forgetting:
+Trains for 100 epochs (10× optimal) and evaluates every 5 epochs on both stroke test sets and healthy s25 data to track learning dynamics and catastrophic forgetting.
 
+**Run all participants:**
+```bash
+python3 run_convergence.py --participant all --variant lora
+```
+
+**Run a single participant:**
+```bash
+python3 run_convergence.py --participant p15 --variant lora
+```
+
+**With explicit config file and healthy data path:**
 ```bash
 python3 run_convergence.py \
   --participant p15 \
   --variant lora \
-  --config_file temp_cv_checkpoints/p15_lora_cv_results.json
-```
-
-Trains for 100 epochs (10× optimal), saving checkpoints every epoch. Evaluates every 5 epochs on:
-- Stroke test sets (5 conditions)
-- Healthy baseline (ROAM-EMG s25 data) to detect catastrophic forgetting
-
-## Training Commands
-
-### Head-Only Fine-Tuning
-
-```bash
-python3 main.py \
-  --freeze_backbone 1 \
-  --saved_checkpoint_pth /path/to/healthy_pretrained.pth \
-  --custom_data_folder /path/to/stroke_data \
-  --dataset_selection custom_folder \
-  --num_classes 3 \
-  --num_epochs 10 \
-  --learning_rate 1e-4 \
-  --exp_name p15_head_only
-```
-
-### LoRA Fine-Tuning
-
-```bash
-python3 main.py \
-  --use_lora 1 \
-  --lora_rank 16 \
-  --lora_alpha 8 \
-  --lora_dropout_p 0.05 \
-  --saved_checkpoint_pth /path/to/healthy_pretrained.pth \
-  --custom_data_folder /path/to/stroke_data \
-  --dataset_selection custom_folder \
-  --num_classes 3 \
-  --num_epochs 10 \
-  --learning_rate 5e-5 \
-  --exp_name p15_lora
-```
-
-### Full Fine-Tuning
-
-```bash
-python3 main.py \
-  --saved_checkpoint_pth /path/to/healthy_pretrained.pth \
-  --custom_data_folder /path/to/stroke_data \
-  --dataset_selection custom_folder \
-  --num_classes 3 \
-  --num_epochs 10 \
-  --learning_rate 5e-5 \
-  --exp_name p15_full_finetune
-```
-
-### Training from Scratch (Stroke-Only)
-
-```bash
-python3 main.py \
-  --custom_data_folder /path/to/stroke_data \
-  --dataset_selection custom_folder \
-  --num_classes 3 \
-  --num_epochs 15 \
-  --learning_rate 1e-4 \
-  --exp_name p15_stroke_only
-```
-
-## Evaluation
-
-### Command-Line Evaluation
-
-```bash
-python3 event_classification.py \
-  --eval_task predict_action \
-  --files_or_dirs /path/to/test_csvs \
-  --buffer_range 800 \
-  --lookahead 100 \
-  --samples_between_prediction 100 \
-  --allow_relax 1 \
-  --stride 1 \
-  --likelihood_format logits \
-  --maj_vote_range future \
-  --saved_checkpoint_pth /path/to/checkpoint.pth \
-  --model_choice any2any \
-  --compute_latency 1
-```
-
-### Programmatic API
-
-```python
-from event_classification import evaluate_checkpoint_programmatic
-
-metrics = evaluate_checkpoint_programmatic(
-    checkpoint_path='model.pth',
-    csv_files=['p15_open_5.csv', 'p15_close_5.csv'],
-    buffer_range=800,
-    lookahead=100,
-    samples_between_prediction=100,
-    allow_relax=1,
-    stride=1,
-    model_choice="any2any",
-    compute_latency=True,
-)
-
-print(f"Transition Accuracy: {metrics['transition_accuracy']:.4f}")
-print(f"Raw Accuracy: {metrics['raw_accuracy']:.4f}")
-print(f"Average Latency: {metrics['average_latency']:.1f} samples")
+  --config_file temp_cv_checkpoints/p15_lora_cv_results.json \
+  --healthy_s25_path ~/Workspace/reactemg/data/ROAM_EMG/s25
 ```
 
 ## Output Structure
@@ -285,13 +187,14 @@ results/
 │               └── metrics_summary.json
 │
 ├── data_efficiency/
-│   └── {participant}/
+│   └── {variant}/{participant}/
 │       ├── K1/  (12 trials + aggregated_metrics.json)
 │       ├── K4/
 │       └── K8/
 │
 └── convergence/
-    └── {participant}/
+    └── {variant}/{participant}/
+        ├── frozen_baseline/
         ├── epoch_*/
         └── convergence_curves.json
 
@@ -299,9 +202,9 @@ model_checkpoints/
 ├── main_experiment/
 │   └── {participant}_{variant}_final.pth
 ├── data_efficiency/
-│   └── {participant}/K{budget}_trial{n}.pth
+│   └── {variant}/{participant}/K{budget}_trial{n}.pth
 └── convergence/
-    └── {participant}/epoch_{n}.pth
+    └── {variant}/{participant}/epoch_{n}.pth
 ```
 
 ## Key Extensions from Base ReactEMG
@@ -310,7 +213,6 @@ model_checkpoints/
 |---------|-------------|
 | `--freeze_backbone` | Freezes all parameters except action classification head |
 | `--custom_data_folder` | Load stroke data from arbitrary directory |
-| `evaluate_checkpoint_programmatic()` | Python API for model evaluation with latency metrics |
 | `dataset_utils.py` | Repetition extraction and K-budget sampling |
 | `cv_hyperparameter_search.py` | 4-fold CV hyperparameter selection |
 | `run_main_experiment.py` | Complete experimental pipeline orchestration |
@@ -330,23 +232,6 @@ All stroke experiments use these evaluation settings for consistency:
 | `stride` | 1 |
 | `likelihood_format` | logits |
 | `maj_vote_range` | future |
-
-## Troubleshooting
-
-**"No checkpoint found"**
-- Verify training completed successfully
-- Check `model_checkpoints/` directory
-- Ensure epoch number matches configuration
-
-**"Test data not found"**
-- Verify participant data paths in script configuration
-- Check file naming patterns (e.g., `p15_open_1.csv`)
-- Ensure all baseline and test files exist
-
-**CUDA out of memory**
-- Reduce batch size (default: 128)
-- Run experiments sequentially
-- Consider using LoRA instead of full fine-tuning
 
 ## Citation
 
