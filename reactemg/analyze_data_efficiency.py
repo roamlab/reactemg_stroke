@@ -17,6 +17,7 @@ import json
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 import seaborn as sns
 
 
@@ -27,8 +28,13 @@ PARTICIPANT_LABELS = {"p4": "s1", "p15": "s2", "p20": "s3"}
 # Zero-shot accuracy (N=0, no fine-tuning)
 ZERO_SHOT_ACC = {"p4": 0.05, "p15": 0.22, "p20": 0.13}
 
-# Full data accuracy (all calibration data)
-FULL_DATA_ACC = {"p4": 0.45, "p15": 0.62, "p20": 0.83}
+# Full data accuracy (all calibration data) - per variant
+FULL_DATA_ACC = {
+    "lora": {"p4": 0.45, "p15": 0.62, "p20": 0.83},
+    "full_finetune": {"p4": 0.40, "p15": 0.62, "p20": 0.82},
+    "head_only": {"p4": 0.45, "p15": 0.62, "p20": 0.83},
+    "stroke_only": {"p4": 0.45, "p15": 0.62, "p20": 0.83},
+}
 
 # X-axis labels and positions (evenly spaced)
 X_LABELS = ["0", "1", "4", "8", "All"]
@@ -47,7 +53,7 @@ def analyze_results(variant: str, participant: str, results_dir: str = None) -> 
     Analyze data efficiency results for a participant.
 
     Returns:
-        dict: {N: {"avg_transition_accuracy": float, "per_condition": {cond: float}}}
+        dict: {N: {"avg_transition_accuracy": float, "std_transition_accuracy": float, "per_condition": {cond: float}}}
     """
     if results_dir is None:
         results_dir = Path(__file__).parent / "results" / "data_efficiency"
@@ -83,10 +89,13 @@ def analyze_results(variant: str, participant: str, results_dir: str = None) -> 
             per_condition[cond] = acc
             trans_accs.append(acc)
 
-        avg_trans_acc = sum(trans_accs) / len(trans_accs) if trans_accs else None
+        trans_accs_arr = np.array(trans_accs)
+        avg_trans_acc = float(np.mean(trans_accs_arr)) if len(trans_accs_arr) > 0 else None
+        std_trans_acc = float(np.std(trans_accs_arr)) if len(trans_accs_arr) > 0 else None
 
         results[n] = {
             "avg_transition_accuracy": avg_trans_acc,
+            "std_transition_accuracy": std_trans_acc,
             "per_condition": per_condition
         }
 
@@ -106,9 +115,10 @@ def print_results(variant: str, participant: str, results: dict):
             continue
 
         avg_acc = results[n]["avg_transition_accuracy"]
+        std_acc = results[n]["std_transition_accuracy"]
         per_cond = results[n]["per_condition"]
 
-        print(f"\nN={n}: {avg_acc:.4f} ({avg_acc*100:.2f}%)")
+        print(f"\nN={n}: {avg_acc:.4f} ± {std_acc:.4f} ({avg_acc*100:.2f}% ± {std_acc*100:.2f}%)")
         print(f"{'-'*40}")
         for cond in CONDITIONS:
             if cond in per_cond:
@@ -138,10 +148,18 @@ def plot_all_subjects(variant: str, results_dir: str = None, output_path: str = 
     # Mapping from budget values to evenly-spaced x positions
     budget_to_xpos = {0: 0, 1: 1, 4: 2, 8: 3, "All": 4}
 
+    # Print header for numerical results
+    print(f"\n{'='*70}")
+    print(f"Data Efficiency Results: {variant}")
+    print(f"{'='*70}")
+    print(f"{'Subject':<10} {'N=0':<12} {'N=1':<12} {'N=4':<12} {'N=8':<12} {'All':<12}")
+    print(f"{'-'*70}")
+
     for i, participant in enumerate(PARTICIPANTS):
-        # Start with zero-shot accuracy at N=0
+        # Start with zero-shot accuracy at N=0 (no std available for zero-shot)
         x_vals = [budget_to_xpos[0]]
         y_vals = [ZERO_SHOT_ACC[participant]]
+        std_vals = [0.0]  # No std for zero-shot point
 
         # Add data efficiency results for N=1, 4, 8
         try:
@@ -150,17 +168,39 @@ def plot_all_subjects(variant: str, results_dir: str = None, output_path: str = 
                 if results[n] is not None and results[n]["avg_transition_accuracy"] is not None:
                     x_vals.append(budget_to_xpos[n])
                     y_vals.append(results[n]["avg_transition_accuracy"])
+                    std_vals.append(results[n]["std_transition_accuracy"] or 0.0)
         except FileNotFoundError:
             print(f"Warning: No results found for {variant}/{participant}, using only zero-shot and full data")
 
-        # Add full data accuracy at "All"
+        # Add full data accuracy at "All" (no std available for full data)
         x_vals.append(budget_to_xpos["All"])
-        y_vals.append(FULL_DATA_ACC[participant])
+        y_vals.append(FULL_DATA_ACC[variant][participant])
+        std_vals.append(0.0)  # No std for full data point
 
+        # Print the numerical values for this participant
         label = PARTICIPANT_LABELS[participant]
-        ax.plot(x_vals, y_vals, marker='o', color=palette[i], label=label,
-                linewidth=2.5, markersize=9, markeredgecolor='white',
-                markeredgewidth=1.5)
+        row_values = []
+        for idx, x_label in enumerate(X_LABELS):
+            if idx < len(y_vals):
+                if std_vals[idx] > 0:
+                    row_values.append(f"{y_vals[idx]:.2f}±{std_vals[idx]:.2f}")
+                else:
+                    row_values.append(f"{y_vals[idx]:.2f}")
+            else:
+                row_values.append("N/A")
+        print(f"{label:<10} {row_values[0]:<12} {row_values[1]:<12} {row_values[2]:<12} {row_values[3]:<12} {row_values[4]:<12}")
+
+        # Convert to numpy arrays for fill_between
+        x_vals = np.array(x_vals)
+        y_vals = np.array(y_vals)
+        std_vals = np.array(std_vals)
+
+        # Plot line with error bars (±1 std)
+        ax.errorbar(x_vals, y_vals, yerr=std_vals, marker='o', color=palette[i],
+                    label=label, linewidth=2.5, markersize=9, markeredgecolor='white',
+                    markeredgewidth=1.5, capsize=4, capthick=1.5)
+
+    print(f"{'='*70}\n")
 
     ax.set_xlabel("Data Budget (N)", fontsize=13)
     ax.set_ylabel("Average Transition Accuracy", fontsize=13)

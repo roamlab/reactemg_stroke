@@ -13,6 +13,10 @@ Usage:
 
     # Compare LoRA vs Full Finetune for p15:
     python3 analyze_convergence.py --compare --output comparison.png
+
+    # Combined plot with all variant stroke curves + LoRA healthy curve:
+    python3 analyze_convergence.py --combined -p p15
+    python3 analyze_convergence.py --combined -p p15 --output combined_p15.png
 """
 
 import argparse
@@ -94,8 +98,8 @@ def extract_plot_data(data: Dict) -> Dict:
         "healthy_accs": healthy_accs,
         "frozen_stroke": frozen_stroke,
         "frozen_healthy": frozen_healthy,
-        "base_epochs": data["base_epochs"],
-        "extended_epochs": data["extended_epochs"],
+        "cv_best_epochs": data.get("cv_best_epochs"),
+        "total_epochs": data.get("total_epochs", 100),
         "variant": data["variant"],
     }
 
@@ -142,7 +146,7 @@ def create_convergence_plot(
         label="Stroke"
     )
     ax1.axhline(
-        y=frozen_stroke, color=stroke_color, linestyle='--', linewidth=1.5,
+        y=frozen_stroke, color=stroke_color, linestyle=(0, (2, 1)), linewidth=1.5,
         alpha=0.7, label="Frozen healthy model zeroshot - stroke"
     )
 
@@ -153,7 +157,7 @@ def create_convergence_plot(
         label="Healthy"
     )
     ax2.axhline(
-        y=frozen_healthy, color=healthy_color, linestyle='--', linewidth=1.5,
+        y=frozen_healthy, color=healthy_color, linestyle=(0, (2, 1)), linewidth=1.5,
         alpha=0.7, label="Frozen healthy model zeroshot - healthy"
     )
 
@@ -245,6 +249,178 @@ def print_summary(participant: str, plot_data: Dict):
     print(f"{'='*65}\n")
 
 
+def create_combined_plot(
+    participant: str = "p15",
+    results_dir: str = None,
+    output_path: str = None,
+    show_plot: bool = False,
+):
+    """
+    Create a single plot with all variant stroke curves and LoRA healthy curve.
+
+    Plots:
+    - Full fine-tuning stroke curve
+    - Head-only stroke curve
+    - LoRA stroke curve
+    - Stroke-only stroke curve
+    - LoRA healthy curve (showing catastrophic forgetting)
+    - Reference lines for zero-shot baselines
+
+    Args:
+        participant: Participant ID (default: p15)
+        results_dir: Path to results directory
+        output_path: Path to save the plot
+        show_plot: Whether to display the plot interactively
+    """
+    sns.set_theme(style="white", context="paper", font_scale=2.2)
+
+    # Define variants and their display properties (no "(Stroke)" in labels)
+    variants_config = {
+        "full_finetune": {"label": "Full Fine-tune", "color": "#E63946", "marker": "o"},
+        "head_only": {"label": "Head-only", "color": "#457B9D", "marker": "s"},
+        "lora": {"label": "LoRA", "color": "#2A9D8F", "marker": "^"},
+        "stroke_only": {"label": "Stroke-only", "color": "#F4A261", "marker": "D"},
+    }
+    lora_healthy_config = {"label": "Healthy Retention", "color": "#9B59B6", "marker": "v"}
+
+    # Minimum epoch to display (skip early epochs)
+    min_epoch = 5
+
+    fig, ax = plt.subplots(figsize=(12, 10))
+
+    # Track stroke zero-shot baseline (will use first available variant's frozen_stroke)
+    stroke_zeroshot = None
+    lora_plot_data = None
+
+    # Pre-load LoRA data for healthy retention curve
+    try:
+        lora_data = load_convergence_data("lora", participant, results_dir)
+        lora_plot_data = extract_plot_data(lora_data)
+    except FileNotFoundError:
+        print(f"Note: No LoRA data found for {participant}, cannot plot healthy curve")
+
+    # Plot curves in order: full_finetune, head_only, Healthy Retention, lora, stroke_only
+    plot_order = ["full_finetune", "head_only", "healthy_retention", "lora", "stroke_only"]
+
+    for item in plot_order:
+        if item == "healthy_retention":
+            # Plot LoRA healthy curve
+            if lora_plot_data is not None:
+                epochs = lora_plot_data["epochs"]
+                healthy_accs = lora_plot_data["healthy_accs"]
+
+                filtered_data = [(e, h) for e, h in zip(epochs, healthy_accs) if e >= min_epoch]
+                if filtered_data:
+                    filtered_epochs, filtered_healthy = zip(*filtered_data)
+
+                    ax.plot(
+                        filtered_epochs, filtered_healthy,
+                        marker=lora_healthy_config["marker"], color=lora_healthy_config["color"],
+                        linewidth=4, markersize=12, markeredgecolor='white',
+                        markeredgewidth=2, linestyle='--', dashes=(2, 1),
+                        label=lora_healthy_config["label"]
+                    )
+        else:
+            # Plot stroke curve for this variant
+            config = variants_config.get(item)
+            if config is None:
+                continue
+            try:
+                data = load_convergence_data(item, participant, results_dir)
+                plot_data = extract_plot_data(data)
+
+                epochs = plot_data["epochs"]
+                stroke_accs = plot_data["stroke_accs"]
+
+                filtered_data = [(e, s) for e, s in zip(epochs, stroke_accs) if e >= min_epoch]
+                if filtered_data:
+                    filtered_epochs, filtered_stroke = zip(*filtered_data)
+                else:
+                    continue
+
+                if stroke_zeroshot is None:
+                    stroke_zeroshot = plot_data["frozen_stroke"]
+
+                ax.plot(
+                    filtered_epochs, filtered_stroke,
+                    marker=config["marker"], color=config["color"],
+                    linewidth=4, markersize=12, markeredgecolor='white',
+                    markeredgewidth=2, label=config["label"]
+                )
+
+            except FileNotFoundError:
+                print(f"Note: No data found for {item}/{participant}, skipping...")
+
+    # Add reference lines with high-visibility colors
+    if lora_plot_data is not None:
+        frozen_healthy = lora_plot_data["frozen_healthy"]
+        ax.axhline(
+            y=frozen_healthy, color="#FF1493",  # Deep pink - highly visible
+            linestyle=':', linewidth=3, alpha=1.0,
+            label="Healthy Zero-shot Reference"
+        )
+        if stroke_zeroshot is None:
+            stroke_zeroshot = lora_plot_data["frozen_stroke"]
+
+    # Add stroke zero-shot reference line (bright, contrasting color)
+    if stroke_zeroshot is not None:
+        ax.axhline(
+            y=stroke_zeroshot, color="#000000",  # Black - highly visible
+            linestyle=':', linewidth=3, alpha=1.0,
+            label="Stroke Zero-shot Reference"
+        )
+
+    # Configure axes - start x-axis at min_epoch
+    ax.set_xlabel("Epoch", fontsize=26)
+    ax.set_ylabel("Average Transition Accuracy", fontsize=22)
+    ax.set_ylim(0, 1.05)
+    ax.set_xlim(left=min_epoch)
+    ax.tick_params(axis='both', which='major', labelsize=18)
+
+    # Remove top and right spines
+    sns.despine(ax=ax)
+
+    # Title
+    subject_label = PARTICIPANT_LABELS.get(participant, participant)
+    ax.set_title(
+        f"Convergence Comparison ({subject_label})",
+        fontsize=24, fontweight='semibold', pad=15
+    )
+
+    # Legend - 3 columns for compact layout
+    ax.legend(
+        loc='upper center',
+        bbox_to_anchor=(0.5, -0.16),
+        ncol=3,
+        frameon=False,
+        fontsize=20,
+        columnspacing=1.0,
+        markerscale=1.3,
+        handlelength=2.5
+    )
+
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=0.38)
+
+    # Save or show
+    if output_path:
+        output_path = Path(output_path)
+    else:
+        output_dir = Path(__file__).parent / "results" / "convergence"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / f"combined_convergence_{participant}.png"
+
+    plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white', edgecolor='none')
+    print(f"Combined plot saved to: {output_path}")
+
+    if show_plot:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    return str(output_path)
+
+
 def plot_variant_comparison(
     participant: str = "p15",
     results_dir: str = None,
@@ -262,11 +438,9 @@ def plot_variant_comparison(
     sns.set_theme(style="white", context="paper", font_scale=1.2)
 
     # Use a clean color palette
-    palette = sns.color_palette("deep", n_colors=4)
+    palette = sns.color_palette("deep", n_colors=2)
     stroke_color = palette[0]  # Blue
     healthy_color = palette[1]  # Orange
-    stroke_baseline_color = palette[2]  # Green
-    healthy_baseline_color = palette[3]  # Red
 
     variants = ["lora", "full_finetune"]
     variant_titles = {"lora": "LoRA", "full_finetune": "Full Fine-tune"}
@@ -302,10 +476,10 @@ def plot_variant_comparison(
                 linewidth=2.5, markersize=7, markeredgecolor='white',
                 markeredgewidth=1.5, label="Healthy")
 
-        # Plot frozen baselines as horizontal dashed lines
-        ax.axhline(y=frozen_stroke, color=stroke_baseline_color, linestyle='--',
+        # Plot frozen baselines as horizontal dotted lines (same color as main lines)
+        ax.axhline(y=frozen_stroke, color=stroke_color, linestyle=(0, (2, 1)),
                    linewidth=2, alpha=0.8, label="Frozen baseline (Stroke)")
-        ax.axhline(y=frozen_healthy, color=healthy_baseline_color, linestyle='--',
+        ax.axhline(y=frozen_healthy, color=healthy_color, linestyle=(0, (2, 1)),
                    linewidth=2, alpha=0.8, label="Frozen baseline (Healthy)")
 
         # Configure axes
@@ -361,9 +535,14 @@ Examples:
     python3 analyze_convergence.py --variant lora --participant p15 --show
     python3 analyze_convergence.py -v head_only -p p20 --output my_plot.png
 
-    # Compare LoRA vs Full Finetune for p15 (s2)
+    # Compare LoRA vs Full Finetune (default: p15)
     python3 analyze_convergence.py --compare
-    python3 analyze_convergence.py --compare --output comparison.png
+    python3 analyze_convergence.py --compare -p p4 --output comparison_p4.png
+    python3 analyze_convergence.py --compare -p p20
+
+    # Combined plot: all variant stroke curves + LoRA healthy curve
+    python3 analyze_convergence.py --combined -p p15
+    python3 analyze_convergence.py --combined -p p15 --output combined_p15.png --show
         """
     )
     parser.add_argument(
@@ -400,22 +579,37 @@ Examples:
     parser.add_argument(
         "--compare",
         action="store_true",
-        help="Create two-column comparison plot (LoRA vs Full Finetune for p15/s2)"
+        help="Create two-column comparison plot (LoRA vs Full Finetune). Use with -p to specify participant."
+    )
+    parser.add_argument(
+        "--combined",
+        action="store_true",
+        help="Create combined plot with all variant stroke curves + LoRA healthy curve. Use with -p to specify participant."
     )
 
     args = parser.parse_args()
 
-    if args.compare:
-        # Create comparison plot for p15
+    if args.combined:
+        # Create combined plot with all variants + LoRA healthy
+        participant = args.participant if args.participant else "p15"
+        create_combined_plot(
+            participant=participant,
+            results_dir=args.results_dir,
+            output_path=args.output,
+            show_plot=args.show,
+        )
+    elif args.compare:
+        # Create comparison plot (default to p15 if no participant specified)
+        participant = args.participant if args.participant else "p15"
         plot_variant_comparison(
-            participant="p15",
+            participant=participant,
             results_dir=args.results_dir,
             output_path=args.output,
         )
     else:
         # Single variant analysis
         if args.variant is None or args.participant is None:
-            parser.error("--variant and --participant are required unless --compare is used")
+            parser.error("--variant and --participant are required unless --compare or --combined is used")
 
         # Load data
         data = load_convergence_data(args.variant, args.participant, args.results_dir)
