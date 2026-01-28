@@ -233,21 +233,6 @@ All stroke experiments use these evaluation settings for consistency:
 | `likelihood_format` | logits |
 | `maj_vote_range` | future |
 
-## Citation
-
-If you use this codebase, please cite the original ReactEMG paper:
-
-```bibtex
-@misc{https://doi.org/10.48550/arxiv.2506.19815,
-  doi = {10.48550/ARXIV.2506.19815},
-  url = {https://arxiv.org/abs/2506.19815},
-  author = {Wang, Runsheng and Zhu, Xinyue and Chen, Ava and Xu, Jingxi and Winterbottom, Lauren and Nilsen, Dawn M. and Stein, Joel and Ciocarlie, Matei},
-  title = {ReactEMG: Zero-Shot, Low-Latency Intent Detection via sEMG},
-  publisher = {arXiv},
-  year = {2025},
-}
-```
-
 ## Contact
 
 For questions about the stroke adaptation experiments, please email Runsheng at runsheng.w@columbia.edu
