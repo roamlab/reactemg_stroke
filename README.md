@@ -66,7 +66,7 @@ The experiments follow a three-stage pipeline:
 │                                                                         │
 │  Stage 2: HYPERPARAMETER SEARCH + TRAINING                              │
 │  ├── 4-fold CV across calibration pool                                  │
-│  ├── Search: 36 configs (4 LRs × 3 epochs × 3 dropouts)                 │
+│  ├── Search: 27 configs (3 LRs × 3 epochs × 3 dropouts)                 │
 │  ├── Select best config per variant (primary: transition accuracy)      │
 │  └── Train final model on full calibration pool                         │
 │                                                                         │
@@ -79,6 +79,39 @@ The experiments follow a three-stage pipeline:
 ## Running the Experiments
 
 All commands assume you're in the `reactemg/` directory.
+
+### Prerequisites & setup
+
+Before running anything, make sure the pipeline can find your data and the
+healthy-pretrained model — **neither lives in this repo**:
+
+1. **Point the scripts at your paths.** `run_main_experiment.py`,
+   `run_data_efficiency.py`, and `run_convergence.py` each define two values
+   hard-coded near the top of the file:
+   - `PARTICIPANTS` — maps each participant to its data folder (the `open_*/close_*`
+     CSVs described above).
+   - `PRETRAINED_CHECKPOINT` — the healthy-pretrained Any2Any checkpoint that every
+     fine-tuned variant adapts from (produced by base ReactEMG, e.g. a healthy LOSO run).
+
+   Edit these to match your machine. The single-strategy script
+   `cv_hyperparameter_search.py` instead takes them as the `--participant_folder` and
+   `--pretrained_checkpoint` flags (see §2).
+
+2. **Disable / configure Weights & Biases.** Every training run calls `wandb.init`.
+   To reproduce without a W&B account:
+   ```bash
+   export WANDB_MODE=disabled
+   ```
+
+**Recommended order for a full from-scratch reproduction.** Steps 2–3 reuse the
+per-variant CV configs that step 1 writes to `temp_cv_checkpoints/`, so run step 1 first:
+
+| Step | Command | Produces |
+|------|---------|----------|
+| 1 | `python3 run_main_experiment.py --participant all` | Table 2 results **and** the CV configs (`temp_cv_checkpoints/{participant}_{variant}_cv_results.json`) reused below |
+| 2 | `python3 run_data_efficiency.py --participant all --variant <v>` | Data-efficiency results — run once per variant you want in the figure (default overlay: `head_only`, `lora`, `full_finetune`) |
+| 3 | `python3 run_convergence.py --participant all --variant <v>` | Convergence results — run once per variant; the combined figure needs all four (`stroke_only`, `head_only`, `lora`, `full_finetune`) |
+| 4 | analysis scripts (§5) | The paper's tables and figures from the JSON under `results/` |
 
 ### 1. Main Experiment (Full Pipeline)
 
@@ -98,7 +131,7 @@ python3 run_main_experiment.py --participant p20
 
 This orchestrates:
 - Zero-shot evaluation on stroke data
-- 4-fold CV hyperparameter search for each strategy (36 configs × 4 folds = 144 runs per strategy)
+- 4-fold CV hyperparameter search for each strategy (27 configs × 4 folds = 108 runs per strategy)
 - Final training with best hyperparameters
 - Evaluation on all 5 test conditions
 
@@ -151,7 +184,7 @@ python3 run_data_efficiency.py \
 
 ### 4. Convergence Study
 
-Trains for 100 epochs (10× optimal) and evaluates every 5 epochs on stroke test sets to track learning dynamics.
+Trains for a **fixed 100 epochs** (far beyond the CV-selected optimum) and evaluates every 5 epochs — 21 checkpoints in total — on the stroke test sets to track learning dynamics.
 
 **Run all participants:**
 ```bash
@@ -199,7 +232,7 @@ python3 analyze_data_efficiency.py --compare -o figure_dataeff.png
 python3 analyze_data_efficiency.py --variant lora --participant p15
 ```
 
-Bars show mean transition accuracy; error bars are the **std across the 12 per-trial averages** at N=1/4/8 (N=All and the zero-shot N=0 baseline are single models, so they carry no error bar). The N=0 and N=All endpoints are read from `results/main_experiment/` and match Table 2 exactly. Choose which strategies to overlay with `--compare_variants head_only lora full_finetune`.
+Bars show mean transition accuracy; error bars are the **std across the 12 per-trial averages** at N=1/4/8 (N=All and the zero-shot N=0 baseline are single models, so they carry no error bar). The N=0 and N=All endpoints are read from `results/main_experiment/` and match Table 2 exactly. Choose which strategies to overlay with `--compare_variants head_only lora full_finetune`. Each overlaid strategy must already have been run through `run_data_efficiency.py` (§3) for the same participants.
 
 #### Figure 2 / Convergence figures
 
