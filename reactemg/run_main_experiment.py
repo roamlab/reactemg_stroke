@@ -26,7 +26,7 @@ PARTICIPANTS = {
     'p20': '~/Workspace/myhand/src/collected_data/2025_12_18',
 }
 
-PRETRAINED_CHECKPOINT = "/home/rsw1/Workspace/reactemg/reactemg/model_checkpoints/LOSO_s14_left_2025-11-15_19-01-41_pc1/epoch_4.pth"
+PRETRAINED_CHECKPOINT = "/home/rsw1/Workspace/reactemg/reactemg/model_checkpoints/reproduce_2025_07_28/LOSO_s14_left_2025-11-15_19-01-41_pc1/epoch_4.pth"
 
 VARIANTS = ['stroke_only', 'head_only', 'lora', 'full_finetune']
 
