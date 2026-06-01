@@ -3,4 +3,9 @@ data/
 wandb/
 model_checkpoints/
 output/
+results/
+temp_convergence_training/
+temp_cv_checkpoints/
+temp_final_training/
+*.png
 __pycache__/
