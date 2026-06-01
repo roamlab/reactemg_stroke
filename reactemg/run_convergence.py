@@ -4,8 +4,8 @@ Convergence study for ReactEMG stroke.
 This script:
 1. Trains a model for 100 epochs (fixed)
 2. Saves checkpoints at every epoch
-3. Evaluates checkpoints every 5 epochs on both stroke test sets and healthy s25 data
-4. Tracks convergence and potential catastrophic forgetting
+3. Evaluates checkpoints every 5 epochs on stroke test sets
+4. Tracks convergence behavior
 """
 
 import os
@@ -27,8 +27,6 @@ PARTICIPANTS = {
 
 PRETRAINED_CHECKPOINT = "/home/rsw1/Workspace/reactemg/reactemg/model_checkpoints/reproduce_2025_07_28/LOSO_s14_left_2025-11-15_19-01-41_pc1/epoch_4.pth"
 
-# HEALTHY_S25_PATH configured via command line argument (see --healthy_s25_path below)
-
 TEST_CONDITIONS = {
     'mid_session_baseline': ['open_5.csv', 'close_5.csv'],
     'end_session_baseline': ['open_fatigue.csv', 'close_fatigue.csv'],
@@ -36,40 +34,6 @@ TEST_CONDITIONS = {
     'sensor_shift': ['open_sensor_shift.csv', 'close_sensor_shift.csv'],
     'orthosis_actuated': ['close_from_open.csv'],
 }
-
-
-def get_healthy_s25_files(s25_path: str = None) -> List[str]:
-    """Get healthy s25 evaluation files (static + grasp, exclude movement)."""
-    if s25_path is None:
-        s25_path = os.path.expanduser("~/Workspace/reactemg/data/ROAM_EMG/s25")
-    else:
-        s25_path = os.path.expanduser(s25_path)
-
-    # Validate path exists
-    if not os.path.exists(s25_path):
-        raise FileNotFoundError(
-            f"Healthy s25 path does not exist: {s25_path}\n"
-            f"Please provide correct path with --healthy_s25_path argument"
-        )
-
-    all_files = glob.glob(os.path.join(s25_path, "*.csv"))
-
-    # Filter for static and grasp files
-    s25_files = [
-        f for f in all_files
-        if ('_static_' in f or '_grasp_' in f) and 'movement' not in f.lower()
-    ]
-
-    if len(s25_files) == 0:
-        raise ValueError(
-            f"No s25 files found matching filter (static/grasp, excluding movement) in {s25_path}"
-        )
-
-    print(f"Found {len(s25_files)} s25 evaluation files:")
-    for f in s25_files:
-        print(f"  - {os.path.basename(f)}")
-
-    return s25_files
 
 
 def get_test_files(participant_folder: str, condition: str) -> List[str]:
@@ -229,20 +193,18 @@ def evaluate_epoch_checkpoint(
     participant_folder: str,
     checkpoint_path: str,
     epoch: int,
-    s25_files: List[str],
 ) -> Dict:
     """
-    Evaluate a single epoch checkpoint on stroke and healthy data.
+    Evaluate a single epoch checkpoint on stroke data.
 
     Returns:
-        Dict with stroke and healthy metrics
+        Dict with stroke metrics
     """
     print(f"\n--- Evaluating Epoch {epoch} ---")
 
     results = {
         'epoch': epoch,
         'stroke_results': {},
-        'healthy_results': {},
     }
 
     # Evaluate on stroke test sets
@@ -289,33 +251,7 @@ def evaluate_epoch_checkpoint(
     results['stroke_avg_raw_acc'] = float(np.mean(stroke_raw_accs)) if stroke_raw_accs else 0.0
     results['stroke_avg_latency_ms'] = float(np.mean(stroke_latencies)) if stroke_latencies else 0.0
 
-    # Evaluate on healthy s25 data
-    print("Evaluating on healthy s25 data...")
-    healthy_metrics = evaluate_checkpoint_programmatic(
-        checkpoint_path=checkpoint_path,
-        csv_files=s25_files,
-        buffer_range=800,
-        lookahead=100,
-        samples_between_prediction=100,
-        allow_relax=1,
-        stride=1,
-        model_choice="any2any",
-        verbose=0,
-        compute_latency=True,
-    )
-
-    # Convert latency from timesteps to ms (200 Hz = 5ms per timestep)
-    healthy_latency_ms = float(healthy_metrics.get('average_latency', 0)) * 5.0
-
-    results['healthy_results'] = {
-        'transition_accuracy': float(healthy_metrics['transition_accuracy']),
-        'raw_accuracy': float(healthy_metrics['raw_accuracy']),
-        'avg_detection_latency_ms': healthy_latency_ms,
-    }
-
-    print(f"  s25: Trans={healthy_metrics['transition_accuracy']:.4f}, Latency={healthy_latency_ms:.1f}ms")
-
-    print(f"Epoch {epoch} - Stroke Avg: {results['stroke_avg_transition_acc']:.4f} (Latency: {results['stroke_avg_latency_ms']:.1f}ms), Healthy: {results['healthy_results']['transition_accuracy']:.4f}")
+    print(f"Epoch {epoch} - Stroke Avg: {results['stroke_avg_transition_acc']:.4f} (Latency: {results['stroke_avg_latency_ms']:.1f}ms)")
 
     return results
 
@@ -324,7 +260,6 @@ def evaluate_frozen_baseline(
     participant: str,
     participant_folder: str,
     pretrained_checkpoint: str,
-    s25_files: List[str],
 ) -> Dict:
     """Evaluate frozen pretrained model as baseline."""
     print(f"\n{'='*80}")
@@ -336,7 +271,6 @@ def evaluate_frozen_baseline(
         participant_folder=participant_folder,
         checkpoint_path=pretrained_checkpoint,
         epoch=-1,  # Use -1 to distinguish from trained epoch 0
-        s25_files=s25_files,
     )
 
 
@@ -346,7 +280,6 @@ def run_convergence_study(
     variant: str,
     best_config: Dict,
     pretrained_checkpoint: str,
-    healthy_s25_path: str = None,
 ):
     """
     Run complete convergence study for one participant.
@@ -357,21 +290,16 @@ def run_convergence_study(
         variant: Best fine-tuning variant
         best_config: Best hyperparameters
         pretrained_checkpoint: Path to pretrained checkpoint
-        healthy_s25_path: Path to healthy s25 data (optional)
     """
     print(f"\n{'='*80}")
     print(f"Convergence Study: {participant} - {variant}")
     print(f"{'='*80}\n")
-
-    # Get healthy s25 files
-    s25_files = get_healthy_s25_files(healthy_s25_path)
 
     # Evaluate frozen baseline
     frozen_baseline_results = evaluate_frozen_baseline(
         participant=participant,
         participant_folder=participant_folder,
         pretrained_checkpoint=pretrained_checkpoint,
-        s25_files=s25_files,
     )
 
     # Save frozen baseline
@@ -412,7 +340,6 @@ def run_convergence_study(
             participant_folder=participant_folder,
             checkpoint_path=checkpoint_path,
             epoch=epoch,
-            s25_files=s25_files,
         )
 
         all_epoch_results.append(epoch_results)
@@ -472,7 +399,6 @@ def run_all_participants(
     variant: str,
     config_file: str = None,
     config_dir: str = "temp_cv_checkpoints",
-    healthy_s25_path: str = None,
 ):
     """
     Run convergence study for all participants.
@@ -481,7 +407,6 @@ def run_all_participants(
         variant: Fine-tuning variant to use
         config_file: Optional explicit config file (if provided, used for all participants)
         config_dir: Directory to search for per-participant config files
-        healthy_s25_path: Path to healthy s25 data
     """
     print("\n" + "="*80)
     print("Convergence Study - All Participants")
@@ -516,7 +441,6 @@ def run_all_participants(
             variant=variant,
             best_config=best_config,
             pretrained_checkpoint=PRETRAINED_CHECKPOINT,
-            healthy_s25_path=healthy_s25_path,
         )
 
         results_summary[participant] = {
@@ -569,12 +493,6 @@ Examples:
         default="temp_cv_checkpoints",
         help="Directory containing CV results files (used when --participant all)"
     )
-    parser.add_argument(
-        "--healthy_s25_path",
-        default="~/Workspace/reactemg/data/ROAM_EMG/s25",
-        help="Path to healthy s25 data for catastrophic forgetting evaluation"
-    )
-
     args = parser.parse_args()
 
     if args.participant == 'all':
@@ -583,7 +501,6 @@ Examples:
             variant=args.variant,
             config_file=args.config_file,
             config_dir=args.config_dir,
-            healthy_s25_path=args.healthy_s25_path,
         )
     else:
         # Run single participant
@@ -610,7 +527,6 @@ Examples:
             variant=args.variant,
             best_config=best_config,
             pretrained_checkpoint=PRETRAINED_CHECKPOINT,
-            healthy_s25_path=args.healthy_s25_path,
         )
 
     print("\nConvergence study complete!")

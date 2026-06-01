@@ -238,7 +238,7 @@ def plot_all_subjects(variant: str, results_dir: str = None, output_path: str = 
     plt.tight_layout()
 
     if output_path:
-        plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor='white',
+        plt.savefig(output_path, dpi=600, bbox_inches='tight', facecolor='white',
                     edgecolor='none')
         print(f"Plot saved to {output_path}")
     else:

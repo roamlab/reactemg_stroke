@@ -3,7 +3,7 @@ Comprehensive unit tests for run_convergence.py and run_data_efficiency.py
 
 This test suite exhaustively validates:
 - Configuration correctness (PARTICIPANTS, TEST_CONDITIONS, etc.)
-- File discovery functions (get_healthy_s25_files, get_test_files, get_all_calibration_files)
+- File discovery functions (get_test_files, get_all_calibration_files)
 - Error handling and exception raising
 - dataset_utils.py functions (extract_repetition_units, get_paired_repetition_indices, sample_repetitions)
 - Training command construction
@@ -31,7 +31,6 @@ from run_convergence import (
     PARTICIPANTS as CONV_PARTICIPANTS,
     PRETRAINED_CHECKPOINT as CONV_PRETRAINED_CHECKPOINT,
     TEST_CONDITIONS as CONV_TEST_CONDITIONS,
-    get_healthy_s25_files,
     get_test_files as conv_get_test_files,
     get_all_calibration_files as conv_get_all_calibration_files,
 )
@@ -325,90 +324,6 @@ def test_get_test_files_invalid_condition():
             log_pass("conv_test_files_invalid_cond", "Correctly raises KeyError")
         except Exception as e:
             log_fail("conv_test_files_invalid_cond", f"Wrong exception: {type(e).__name__}: {e}")
-
-
-# ============================================================================
-# SECTION 4: get_healthy_s25_files() Tests
-# ============================================================================
-
-def test_get_healthy_s25_files_path_not_found():
-    """Test get_healthy_s25_files raises error for nonexistent path."""
-    print("\n" + "="*80)
-    print("TEST SECTION: get_healthy_s25_files() Tests")
-    print("="*80)
-
-    # Test 4.1: Nonexistent path should raise FileNotFoundError
-    try:
-        get_healthy_s25_files("/nonexistent/path/to/s25")
-        log_fail("s25_path_not_found", "Should raise FileNotFoundError for nonexistent path")
-    except FileNotFoundError as e:
-        if "does not exist" in str(e):
-            log_pass("s25_path_not_found", "Correctly raises FileNotFoundError")
-        else:
-            log_fail("s25_path_not_found", f"Error message unclear: {e}")
-    except Exception as e:
-        log_fail("s25_path_not_found", f"Wrong exception: {type(e).__name__}: {e}")
-
-
-def test_get_healthy_s25_files_filtering():
-    """Test get_healthy_s25_files correctly filters files."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Create test files
-        valid_files = [
-            "s25_static_open.csv",
-            "s25_static_close.csv",
-            "s25_grasp_open.csv",
-            "s25_grasp_close.csv",
-        ]
-        invalid_files = [
-            "s25_movement_open.csv",  # Should be excluded (movement)
-            "s25_static_movement.csv",  # Should be excluded (movement)
-            "s25_random.csv",  # Should be excluded (no static/grasp)
-        ]
-
-        for f in valid_files + invalid_files:
-            open(os.path.join(tmpdir, f), 'w').close()
-
-        # Test 4.2: Should only return static/grasp files without movement
-        try:
-            files = get_healthy_s25_files(tmpdir)
-            filenames = [os.path.basename(f) for f in files]
-
-            # Check valid files are included
-            for vf in valid_files:
-                if vf in filenames:
-                    log_pass(f"s25_includes_{vf}", f"Correctly includes {vf}")
-                else:
-                    log_fail(f"s25_includes_{vf}", f"Should include {vf}")
-
-            # Check invalid files are excluded
-            for ivf in invalid_files:
-                if ivf not in filenames:
-                    log_pass(f"s25_excludes_{ivf}", f"Correctly excludes {ivf}")
-                else:
-                    log_fail(f"s25_excludes_{ivf}", f"Should exclude {ivf}")
-
-        except Exception as e:
-            log_fail("s25_filtering", f"Unexpected error: {e}")
-
-
-def test_get_healthy_s25_files_empty_dir():
-    """Test get_healthy_s25_files raises error for empty/no-match directory."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Create files that won't match the filter
-        open(os.path.join(tmpdir, "s25_movement_only.csv"), 'w').close()
-
-        # Test 4.3: No matching files should raise ValueError
-        try:
-            get_healthy_s25_files(tmpdir)
-            log_fail("s25_no_matches", "Should raise ValueError when no files match filter")
-        except ValueError as e:
-            if "No s25 files found" in str(e):
-                log_pass("s25_no_matches", "Correctly raises ValueError")
-            else:
-                log_fail("s25_no_matches", f"Error message unclear: {e}")
-        except Exception as e:
-            log_fail("s25_no_matches", f"Wrong exception: {type(e).__name__}: {e}")
 
 
 # ============================================================================
@@ -1002,11 +917,6 @@ def test_json_serialization_convergence():
                 'avg_detection_latency_ms': 45.5,
             }
         },
-        'healthy_results': {
-            'transition_accuracy': 0.78,
-            'raw_accuracy': 0.88,
-            'avg_detection_latency_ms': 52.0,
-        },
         'stroke_avg_transition_acc': 0.85,
         'stroke_avg_raw_acc': 0.92,
         'stroke_avg_latency_ms': 45.5,
@@ -1276,7 +1186,7 @@ def test_imports():
 
     modules_to_test = [
         ('run_convergence', ['PARTICIPANTS', 'TEST_CONDITIONS', 'get_test_files',
-                             'get_all_calibration_files', 'get_healthy_s25_files']),
+                             'get_all_calibration_files']),
         ('run_data_efficiency', ['PARTICIPANTS', 'TEST_CONDITIONS', 'get_test_files']),
         ('dataset_utils', ['extract_repetition_units', 'get_paired_repetition_indices',
                           'sample_repetitions']),
@@ -1316,11 +1226,6 @@ def run_all_tests():
     test_get_test_files_raises_value_error()
     test_get_test_files_success()
     test_get_test_files_invalid_condition()
-
-    # Section 4: get_healthy_s25_files()
-    test_get_healthy_s25_files_path_not_found()
-    test_get_healthy_s25_files_filtering()
-    test_get_healthy_s25_files_empty_dir()
 
     # Section 5: get_all_calibration_files()
     test_get_all_calibration_files()
