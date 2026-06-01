@@ -93,9 +93,7 @@ healthy-pretrained model — **neither lives in this repo**:
    - `PRETRAINED_CHECKPOINT` — the healthy-pretrained Any2Any checkpoint that every
      fine-tuned variant adapts from (produced by base ReactEMG, e.g. a healthy LOSO run).
 
-   Edit these to match your machine. The single-strategy script
-   `cv_hyperparameter_search.py` instead takes them as the `--participant_folder` and
-   `--pretrained_checkpoint` flags (see §2).
+   Edit these to match your machine.
 
 2. **Disable / configure Weights & Biases.** Every training run calls `wandb.init`.
    To reproduce without a W&B account:
@@ -108,192 +106,60 @@ per-variant CV configs that step 1 writes to `temp_cv_checkpoints/`, so run step
 
 | Step | Command | Produces |
 |------|---------|----------|
-| 1 | `python3 run_main_experiment.py --participant all` | Table 2 results **and** the CV configs (`temp_cv_checkpoints/{participant}_{variant}_cv_results.json`) reused below |
-| 2 | `python3 run_data_efficiency.py --participant all --variant <v>` | Data-efficiency results — run once per variant you want in the figure (default overlay: `head_only`, `lora`, `full_finetune`) |
-| 3 | `python3 run_convergence.py --participant all --variant <v>` | Convergence results — run once per variant; the combined figure needs all four (`stroke_only`, `head_only`, `lora`, `full_finetune`) |
-| 4 | analysis scripts (§5) | The paper's tables and figures from the JSON under `results/` |
+| 1 | `python3 run_main_experiment.py --participant all` | Table 2 results **and** the per-variant CV configs in `temp_cv_checkpoints/` (reused below) |
+| 2 | `run_data_efficiency.py` for all variants — see §2 | Data-efficiency results |
+| 3 | `run_convergence.py` for all variants — see §3 | Convergence results |
+| 4 | analysis scripts — see §4 | The paper's tables and figures from the JSON under `results/` |
 
 ### 1. Main Experiment (Full Pipeline)
 
 The main experiment script orchestrates zero-shot evaluation, hyperparameter search, final training, and evaluation for all strategies.
 
-**Run all participants:**
 ```bash
 python3 run_main_experiment.py --participant all
 ```
 
-**Run a single participant:**
-```bash
-python3 run_main_experiment.py --participant p4
-python3 run_main_experiment.py --participant p15
-python3 run_main_experiment.py --participant p20
-```
-
 This orchestrates:
 - Zero-shot evaluation on stroke data
-- 4-fold CV hyperparameter search for each strategy (27 configs × 4 folds = 108 runs per strategy)
-- Final training with best hyperparameters
+- 4-fold CV hyperparameter search per strategy — 27 configs (LR {5e-5, 1e-4, 5e-4} × epochs {5, 10, 15} × dropout {0, 0.1, 0.2}) × 4 folds = 108 runs
+- Final training with best hyperparameters (saved to `temp_cv_checkpoints/{participant}_{variant}_cv_results.json`)
 - Evaluation on all 5 test conditions
 
-### 2. Hyperparameter Search (Single Strategy)
+### 2. Data Efficiency Experiment
 
-Run CV search for a specific participant and strategy. This is useful for running individual strategies in parallel or re-running a specific search.
-
-```bash
-python3 cv_hyperparameter_search.py \
-  --participant p15 \
-  --participant_folder ~/Workspace/myhand/src/collected_data/2025_12_04 \
-  --variant lora \
-  --pretrained_checkpoint /path/to/healthy_pretrained.pth
-```
-
-**Available variants**: `stroke_only`, `head_only`, `lora`, `full_finetune`
-
-**Search Space**:
-- Learning rate: [5e-5, 1e-4, 5e-4]
-- Epochs: [5, 10, 15]
-- Dropout: [0, 0.1, 0.2]
-
-Results saved to: `temp_cv_checkpoints/{participant}_{variant}_cv_results.json`
-
-### 3. Data Efficiency Experiment
-
-Evaluates performance with limited calibration data (K=1, 4, 8 paired repetitions) using 12 trials per K.
-
-**Run all participants:**
-```bash
-python3 run_data_efficiency.py --participant all --variant lora
-```
-
-**Run a single participant:**
-```bash
-python3 run_data_efficiency.py --participant p15 --variant lora
-```
-
-**With explicit config file:**
-```bash
-python3 run_data_efficiency.py \
-  --participant p15 \
-  --variant lora \
-  --config_file temp_cv_checkpoints/p15_lora_cv_results.json
-```
-
-**Sampling Strategy**:
-- K=1: Each trial uses exactly one unique repetition (trial i uses g_i)
-- K>1: Random sampling without replacement across all 12 repetitions
-
-### 4. Convergence Study
-
-Trains for a **fixed 100 epochs** (far beyond the CV-selected optimum) and evaluates every 5 epochs — 21 checkpoints in total — on the stroke test sets to track learning dynamics.
-
-**Run all participants:**
-```bash
-python3 run_convergence.py --participant all --variant lora
-```
-
-**Run a single participant:**
-```bash
-python3 run_convergence.py --participant p15 --variant lora
-```
-
-**With explicit config file:**
-```bash
-python3 run_convergence.py \
-  --participant p15 \
-  --variant lora \
-  --config_file temp_cv_checkpoints/p15_lora_cv_results.json
-```
-
-### 5. Generating Tables & Figures
-
-After the experiments above populate `results/`, these analysis scripts turn the raw JSON metrics into the paper's tables and figures. Participant mapping: **p4 = S1, p15 = S2, p20 = S3**.
-
-#### Table 2 — Intent detection performance
+Evaluates performance with limited calibration data (K = 1, 4, 8 paired repetitions, 12 trials per K). Each run reuses the CV config the main experiment wrote for that variant. Run all subjects and all variants:
 
 ```bash
-python3 extract_results.py
+for v in stroke_only head_only lora full_finetune; do
+  python3 run_data_efficiency.py --participant all --variant "$v"
+done
 ```
 
-Processes all three participants and writes an aligned table of **mean ± std across the 5 held-out test conditions** for every strategy, for both raw and transition accuracy (with an Avg-across-subjects block). Saved to `results/main_experiment/table2.txt`; override the path with `-o`.
+**Sampling**: K=1 uses one unique repetition per trial (trial *i* uses g_*i*); K>1 samples K of the 12 repetitions without replacement per trial.
 
-Grouped bar-chart version of the same numbers (mean only):
+### 3. Convergence Study
+
+Trains for a **fixed 100 epochs** (far beyond the CV-selected optimum), evaluating every 5 epochs — 21 checkpoints — on the stroke test sets to track learning dynamics. Run all subjects and all variants:
 
 ```bash
-python3 plot_main_results.py     # -> results/main_experiment/table2_bars.png (600 DPI)
+for v in stroke_only head_only lora full_finetune; do
+  python3 run_convergence.py --participant all --variant "$v"
+done
 ```
 
-#### Table 3 / Data efficiency figures
+### 4. Generating Tables & Figures
+
+With `results/` populated, these scripts produce the paper's tables and figures (subject mapping **p4 = S1, p15 = S2, p20 = S3**):
 
 ```bash
-# Grouped bar chart: head-only vs LoRA vs full fine-tune, one panel per subject
-python3 analyze_data_efficiency.py --compare -o figure_dataeff.png
-
-# Numeric summary for one (variant, participant)
-python3 analyze_data_efficiency.py --variant lora --participant p15
+python3 extract_results.py                                              # Table 2      -> results/main_experiment/table2.txt
+python3 plot_main_results.py                                           # Table 2 bars -> results/main_experiment/table2_bars.png
+python3 analyze_data_efficiency.py --compare -o figure_dataeff.png     # data-efficiency figure
+python3 analyze_convergence.py --combined -p p15 -o figure_conv_s2.png # convergence figure (per subject; p15 = S2)
 ```
 
-Bars show mean transition accuracy; error bars are the **std across the 12 per-trial averages** at N=1/4/8 (N=All and the zero-shot N=0 baseline are single models, so they carry no error bar). The N=0 and N=All endpoints are read from `results/main_experiment/` and match Table 2 exactly. Choose which strategies to overlay with `--compare_variants head_only lora full_finetune`. Each overlaid strategy must already have been run through `run_data_efficiency.py` (§3) for the same participants.
-
-#### Figure 2 / Convergence figures
-
-```bash
-# Combined plot: all strategy stroke curves
-python3 analyze_convergence.py --combined -p p15 -o figure_conv_s2.png
-
-# Single-variant convergence plot (stroke accuracy)
-python3 analyze_convergence.py --variant lora --participant p15
-```
-
-A combined plot for a subject requires all four variant convergence runs (`stroke_only`, `head_only`, `lora`, `full_finetune`) for that subject.
-
-## Output Structure
-
-```
-results/
-├── main_experiment/
-│   ├── table2.txt              # generated by extract_results.py
-│   ├── table2_bars.png         # generated by plot_main_results.py
-│   └── {participant}/
-│       ├── zero_shot/
-│       ├── stroke_only/
-│       ├── head_only/
-│       ├── lora/
-│       └── full_finetune/
-│           └── {test_condition}/
-│               └── metrics_summary.json
-│
-├── data_efficiency/
-│   └── {variant}/{participant}/
-│       ├── K1/  (12 trials + aggregated_metrics.json)
-│       ├── K4/
-│       └── K8/
-│
-└── convergence/
-    └── {variant}/{participant}/
-        ├── frozen_baseline/
-        ├── epoch_*/
-        └── convergence_curves.json
-
-model_checkpoints/
-├── main_experiment/
-│   └── {participant}_{variant}_final.pth
-├── data_efficiency/
-│   └── {variant}/{participant}/K{budget}_trial{n}.pth
-└── convergence/
-    └── {variant}/{participant}/epoch_{n}.pth
-```
-
-## Key Extensions from Base ReactEMG
-
-| Feature | Description |
-|---------|-------------|
-| `--freeze_backbone` | Freezes all parameters except action classification head |
-| `--custom_data_folder` | Load stroke data from arbitrary directory |
-| `dataset_utils.py` | Repetition extraction and K-budget sampling |
-| `cv_hyperparameter_search.py` | 4-fold CV hyperparameter selection |
-| `run_main_experiment.py` | Complete experimental pipeline orchestration |
-| `run_data_efficiency.py` | Few-shot adaptation experiments |
-| `run_convergence.py` | Convergence analysis |
+- The `--compare` and `--combined` figures require the corresponding experiment to have been run for **every overlaid variant** (data efficiency defaults to `head_only lora full_finetune`; convergence needs all four).
+- Pass `--variant <v> --participant <p>` to either `analyze_*` script for a single numeric summary, or `-o <path>` to set the output file.
 
 ## Fixed Evaluation Parameters
 
@@ -309,9 +175,11 @@ All stroke experiments use these evaluation settings for consistency:
 | `likelihood_format` | logits |
 | `maj_vote_range` | future |
 
+Refer to the [ReactEMG README](https://github.com/roamlab/reactemg#readme) for how these parameters shape the online smoothing behavior and the transition-accuracy metric.
+
 ## Contact
 
-For questions about the stroke adaptation experiments, please email Runsheng at runsheng.w@columbia.edu
+For questions or support, please email Runsheng at runsheng.w@columbia.edu
 
 ## License
 
