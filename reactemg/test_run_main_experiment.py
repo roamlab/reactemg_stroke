@@ -489,7 +489,6 @@ def test_training_command_construction():
             "--share_pe",
             "--dataset_selection", "custom_folder",
             "--window_size", "600",
-            "--inner_window_size", "600",
             "--model_choice", "any2any",
             "--val_patient_ids", "none",
             "--epn_subset_percentage", "1.0",
@@ -523,7 +522,7 @@ def test_training_command_construction():
 
         # Test 5.2: Required arguments present
         required_args = ["--num_classes", "--model_choice", "--window_size",
-                        "--inner_window_size", "--batch_size", "--epochs"]
+                        "--batch_size", "--epochs"]
         for arg in required_args:
             if arg in cmd:
                 log_pass(f"cmd_has_{arg}_{variant}", f"Command includes {arg}")

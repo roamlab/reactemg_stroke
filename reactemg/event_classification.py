@@ -12,20 +12,8 @@ from collections import Counter
 from functools import partial
 from torch.utils.data import DataLoader
 from scipy.signal import medfilt
-from dataset import (
-    Any2Any_Dataset,
-    EDTCN_Dataset,
-    LSTM_Dataset,
-    ANN_Dataset,
-    TraHGR_Dataset
-)
-from nn_models import (
-    Any2Any_Model,
-    EDTCN_Model,
-    LSTM_Model,
-    ANN_Model,
-    TraHGR_Model
-)
+from dataset import Any2Any_Dataset
+from nn_models import Any2Any_Model
 from minlora import add_lora, merge_lora, LoRAParametrization
 from torch.nn.utils import parametrize
 from collections import defaultdict
@@ -619,85 +607,6 @@ def realtime_online_aggregation(
     return aggregated
 
 
-def repeat_chunks(
-    tensor,
-    original_length,
-    inner_window_size,
-    inner_stride,
-):
-    """
-    Upsamples a reduced output of shape (B, T_red[, D]) to (B, original_length[, D]),
-    following a specific overlapping window logic:
-
-      - The 1st label covers timesteps [0 : inner_window_size).
-      - The 2nd label covers timesteps [inner_window_size : inner_window_size + inner_stride).
-      - The 3rd label covers timesteps [inner_window_size + inner_stride : inner_window_size + 2*inner_stride),
-        and so on, until all T_red labels have been assigned.
-
-    It's assumed that:
-        inner_window_size + (T_red - 1)*inner_stride == original_length
-
-    Args:
-        tensor (torch.Tensor):
-            2D shape = (B, T_red)
-            OR
-            3D shape = (B, T_red, D)
-        original_length (int):
-            Desired final temporal length of the upsampled sequence.
-        inner_window_size (int):
-            The size of the first window (in original timesteps).
-        inner_stride (int):
-            The stride used for subsequent windows (in original timesteps).
-
-    Returns:
-        upsampled (torch.Tensor):
-            shape = (B, original_length) if input was 2D
-            shape = (B, original_length, D) if input was 3D
-    """
-    # Determine input dimensions
-    dim = tensor.dim()
-    if dim == 2:
-        # tensor shape = (B, T_red)
-        B, T_red = tensor.shape
-        # Prepare output placeholder
-        upsampled = tensor.new_zeros((B, original_length))
-    elif dim == 3:
-        # tensor shape = (B, T_red, D)
-        B, T_red, D = tensor.shape
-        upsampled = tensor.new_zeros((B, original_length, D))
-    else:
-        raise ValueError("repeat_chunks expects a 2D or 3D tensor")
-
-    # Fill the output according to the described logic
-    for i in range(T_red):
-        if i == 0:
-            # First label -> covers [0 : inner_window_size)
-            start_idx = 0
-            end_idx = inner_window_size
-        else:
-            # i-th label -> covers [inner_window_size + (i-1)*inner_stride : inner_window_size + i*inner_stride)
-            start_idx = inner_window_size + (i) * inner_stride
-            end_idx = start_idx + inner_stride
-
-        # In case there's any rounding or mismatch, clamp end_idx
-        if end_idx > original_length:
-            end_idx = original_length
-
-        if end_idx <= start_idx:
-            # Safety check: no more space to fill
-            break
-
-        # Fill upsampled with the i-th label
-        if dim == 2:
-            # 2D: shape = (B, T_red)
-            upsampled[:, start_idx:end_idx] = tensor[:, i].unsqueeze(-1)
-        else:
-            # 3D: shape = (B, T_red, D)
-            upsampled[:, start_idx:end_idx, :] = tensor[:, i, :].unsqueeze(1)
-
-    return upsampled
-
-
 def evaluate_predictions(
     predicted_actions,
     ground_truth_actions,
@@ -884,49 +793,12 @@ def initialize_dataset(
             medfilt_order=args_dict["medfilt_order"],
             noise=0.0,
             hand_choice=args_dict["hand_choice"],
-            inner_window_size=args_dict["inner_window_size"],
-            use_mav_for_emg=args_dict["use_mav_for_emg"],
             # Now the inference-only arguments
             eval_mode=True,
             eval_task=eval_task,
             transition_samples_only=transition_samples_only,
             mask_percentage=mask_percentage,
             mask_type=mask_type,
-        )
-    elif model_choice == "ed_tcn":
-        dataset = EDTCN_Dataset(
-            window_size=args_dict["window_size"],
-            offset=stride,
-            file_paths=[csv_path],
-            inner_window_size=150,
-            inner_stride=25,
-        )
-    elif model_choice == "lstm":
-        dataset = LSTM_Dataset(
-            window_size=args_dict["window_size"],
-            offset=stride,
-            csv_paths=[csv_path],
-            num_classes=args_dict["num_classes"],
-            precomputed_mean=args_dict["precomputed_mean"],
-            precomputed_std=args_dict["precomputed_std"],
-        )
-    elif model_choice == "ann":
-        dataset = ANN_Dataset(
-            window_size=args_dict["window_size"],
-            offset=stride,
-            file_paths=[csv_path],
-            num_classes=args_dict["num_classes"],
-            use_precomputed_stats=True,
-            precomputed_mean=args_dict["precomputed_mean"],
-            precomputed_std=args_dict["precomputed_std"],
-        )
-    elif model_choice == "trahgr":
-        dataset = TraHGR_Dataset(
-            window_size=args_dict["window_size"],
-            offset=stride,
-            file_paths=[csv_path],
-            num_classes=args_dict["num_classes"],
-            butter_cutoff_hz=args_dict.get("trahgr_butter_cutoff_hz", 90.0),
         )
     else:
         raise ValueError(f"Unknown model_choice: {model_choice}")
@@ -947,14 +819,10 @@ def initialize_model(args_dict, checkpoint, model_choice, device):
             args_dict["mask_alignment"],
             args_dict["share_pe"],
             args_dict["tie_weight"],
-            args_dict["use_decoder"],
             args_dict["use_input_layernorm"],
             args_dict["num_classes"],
             args_dict["output_reduction_method"],
             args_dict["chunk_size"],
-            600,
-            0,
-            1,
         )
         if args_dict["use_lora"] == 1:
             lora_config = {
@@ -968,38 +836,6 @@ def initialize_model(args_dict, checkpoint, model_choice, device):
                 },
             }
             add_lora(model, lora_config)
-    elif model_choice == "ed_tcn":
-        model = EDTCN_Model(
-            num_channels=8,
-            num_classes=args_dict["num_classes"],
-            enc_filters=(128, 288),
-            kernel_size=9,
-        )
-    elif model_choice == "lstm":
-        model = LSTM_Model(
-            input_size=8,
-            fc_size=400,
-            hidden_size=256,
-            num_classes=args_dict["num_classes"],
-        )
-    elif model_choice == "ann":
-        model = ANN_Model(num_classes=args_dict["num_classes"])
-    elif model_choice == "trahgr":
-        # Defaults = TraHGR-Huge from the paper (L=1, D=144, MLP=720, h=8)
-        model = TraHGR_Model(
-            num_classes=args_dict["num_classes"],
-            embed_dim=args_dict["embedding_dim"],
-            num_heads=args_dict["nhead"],
-            num_layers=args_dict["num_layers"],
-            dropout=args_dict["dropout"],
-            window_len=args_dict["window_size"],
-            num_sensors=8,
-            num_filter_orders=3
-
-        )
-        print("hi")
-
-        
     else:
         raise ValueError(f"Unknown model_choice: {model_choice}")
 
@@ -1046,7 +882,6 @@ def process_and_evaluate(
     maj_vote_range,
     stride,
     epn_eval,
-    recog_threshold,
     verbose,
     model_choice,
 ):
@@ -1055,209 +890,15 @@ def process_and_evaluate(
       (results_dict, pred_aggregated, gt_aggregated)
     """
 
-    if model_choice == "ann":
-        # We assume dataset_eval.__getitem__ returns (features_48d, label_int, raw_gt_seq)
-        #   features_48d: shape [48], the ANN input features
-        #   label_int:    int label for that window
-        #   raw_gt_seq:   shape [window_size], the ground-truth labels for every timestep in that window
-
-        # We create a DataLoader
-        dataloader_eval = DataLoader(
-            dataset_eval,
-            batch_size=eval_batch_size,
-            shuffle=False,
-            pin_memory=True,
-            num_workers=1,
-        )
-
-        model.eval()
-        window_size = args_dict["window_size"]
-        num_windows = len(dataset_eval)
-
-        # We define a final timeline for the *real* signal of length:
-        #   final_length = (num_windows - 1)*stride + window_size
-        # Because the 1st window ends at index (window_size - 1),
-        #   the 2nd window ends at (stride + window_size - 1),
-        #   etc.
-        final_length = (num_windows - 1) * stride + window_size
-
-        # Initialize with -1 to indicate "no prediction yet"
-        pred_aggregated = np.full(final_length, -1, dtype=int)
-        gt_aggregated = np.full(final_length, -1, dtype=int)
-
-        last_filled_t = -1  # last time index that we assigned a prediction
-        last_pred = -1  # the most recent predicted label
-
-        with torch.no_grad():
-            # We'll read each sample in sequential order.
-            for global_i, batch_data in enumerate(dataloader_eval):
-                # batch_data is (X, y, raw_gt_seq), but since we have a batch, let's parse them
-                X_batch, y_batch, raw_gt_batch = batch_data
-                #   X_batch:  shape [B, 48]
-                #   y_batch:  shape [B]
-                #   raw_gt_batch: shape [B, window_size]
-
-                # Forward pass: shape [B, num_classes]
-                logits = model(X_batch.to(device))
-                preds = torch.argmax(logits, dim=-1).cpu().numpy()  # shape [B]
-
-                # We'll loop through each item in the batch
-                for b in range(X_batch.shape[0]):
-                    # The "i-th window" in the dataset is: i = global_i*eval_batch_size + b
-                    i_window = global_i * eval_batch_size + b
-                    if i_window >= num_windows:
-                        break  # in case the last batch is partially filled
-
-                    # The window's "end" is (i_window*stride + (window_size - 1))
-                    end_t = i_window * stride + (window_size - 1)
-                    if end_t >= final_length:
-                        continue
-
-                    current_pred = preds[b]  # single label for this window
-                    # For ground truth, we have raw_gt_batch[b], shape [window_size].
-                    # We want to fill the portion that belongs to new timesteps we haven't assigned yet.
-
-                    # 1) Fill predictions from last_filled_t+1 up to end_t with the "most recent known pred"
-                    for fill_t in range(last_filled_t + 1, end_t + 1):
-                        if fill_t < 0 or fill_t >= final_length:
-                            continue
-                        # If we have no "previous" prediction, use the current window pred
-                        pred_aggregated[fill_t] = (
-                            last_pred if last_pred != -1 else current_pred
-                        )
-
-                    # Now update "last_pred" and "last_filled_t"
-                    last_pred = current_pred
-                    last_filled_t = end_t
-
-                    # 2) Fill ground truth for [last_filled_t+1 .. end_t] using the last `stride` part of raw_gt_seq
-                    #    "the new non-overlapping timesteps should be used for ground truth construction"
-                    # We'll interpret the user request: the "last stride" portion is raw_gt_seq[b, window_size - stride : ].
-                    # We'll place it in [end_t - stride + 1 .. end_t], or from the old last_filled_t..end_t
-                    # Example approach:
-
-                    # The slice in raw_gt_seq
-                    if stride > window_size:
-                        # edge case: if stride > window_size, the "last stride portion" is bigger than the window itself
-                        # pick the entire raw_gt_seq
-                        relevant_gt = raw_gt_batch[b].numpy()  # shape [window_size]
-                    else:
-                        start_idx = max(0, window_size - stride)
-                        relevant_gt = raw_gt_batch[
-                            b, start_idx:
-                        ].numpy()  # shape [stride] typically
-
-                    stride_len = len(relevant_gt)
-                    # The segment in global GT we want to fill
-                    gt_fill_start = end_t - (stride_len - 1)
-                    if gt_fill_start < 0:
-                        gt_fill_start = 0
-                    # Fill it
-                    for k in range(stride_len):
-                        fill_t = gt_fill_start + k
-                        if fill_t >= final_length:
-                            break
-                        gt_aggregated[fill_t] = relevant_gt[k]
-
-        # After finishing all windows, we may have leftover timesteps from last_filled_t+1 .. final_length-1
-        # that remain -1. The user wants us to keep carrying forward the last prediction:
-        if last_pred != -1:
-            for fill_t in range(last_filled_t + 1, final_length):
-                pred_aggregated[fill_t] = last_pred
-
-        # trim empty filler at the beginning
-        gt_aggregated = gt_aggregated[window_size:]
-        pred_aggregated = pred_aggregated[window_size:]
-
-    elif model_choice == "trahgr":
-        # TraHGR: treat as single-label window classifier (use fused head)
-        # dataset_eval.__getitem__ returns: (temporal_patches [S, W*C], featural_patches [Nf, S*S*C], y, raw_gt_seq)
-        dataloader_eval = DataLoader(
-            dataset_eval,
-            batch_size=eval_batch_size,
-            shuffle=False,
-            pin_memory=True,
-            num_workers=1,
-        )
-
-        model.eval()
-        window_size = args_dict["window_size"]
-        num_windows = len(dataset_eval)
-
-        final_length = (num_windows - 1) * stride + window_size
-        pred_aggregated = np.full(final_length, -1, dtype=int)
-        gt_aggregated = np.full(final_length, -1, dtype=int)
-
-        last_filled_t = -1
-        last_pred = -1
-
-        with torch.no_grad():
-            for global_i, batch_data in enumerate(dataloader_eval):
-                temporal_patches, featural_patches, y_batch, raw_gt_batch = batch_data
-                # Forward: get fused logits (y_fused)
-                y_fused, y_tnet, y_fnet = model(
-                    temporal_patches.to(device).float(),
-                    featural_patches.to(device).float()
-                )
-                preds = torch.argmax(y_fused, dim=-1).cpu().numpy()  # [B]
-
-                for b in range(temporal_patches.size(0)):
-                    i_window = global_i * eval_batch_size + b
-                    if i_window >= num_windows:
-                        break
-
-                    end_t = i_window * stride + (window_size - 1)
-                    if end_t >= final_length:
-                        continue
-
-                    current_pred = int(preds[b])
-
-                    # Fill predictions from the last assigned index up to end_t
-                    for fill_t in range(last_filled_t + 1, end_t + 1):
-                        if 0 <= fill_t < final_length:
-                            pred_aggregated[fill_t] = last_pred if last_pred != -1 else current_pred
-
-                    # Update rolling state
-                    last_pred = current_pred
-                    last_filled_t = end_t
-
-                    # Fill GT for the newly added part using the last `stride` timesteps of the window
-                    if stride > window_size:
-                        relevant_gt = raw_gt_batch[b].numpy()
-                    else:
-                        start_idx = max(0, window_size - stride)
-                        relevant_gt = raw_gt_batch[b, start_idx:].numpy()
-
-                    stride_len = len(relevant_gt)
-                    gt_fill_start = end_t - (stride_len - 1)
-                    gt_fill_start = max(0, gt_fill_start)
-                    for k in range(stride_len):
-                        fill_t = gt_fill_start + k
-                        if fill_t >= final_length:
-                            break
-                        gt_aggregated[fill_t] = int(relevant_gt[k])
-
-        # Carry forward last prediction to the end if needed
-        if last_pred != -1:
-            for fill_t in range(last_filled_t + 1, final_length):
-                pred_aggregated[fill_t] = last_pred
-
-        # Trim the initial left padding region
-        gt_aggregated = gt_aggregated[window_size:]
-        pred_aggregated = pred_aggregated[window_size:]
-
-    else:
-        # Non-ANN branch, all models below are dense models
+    if model_choice == "any2any":
+        # any2any (dense) inference
         # Suppose dataset_eval has sample_counts keyed by path
         num_samples = len(dataset_eval)
         total_timesteps = args_dict["window_size"] + ((num_samples - 1) * stride)
 
         # Prepare placeholders for predictions
         # +1 to account for the mask class
-        if model_choice == "any2any":
-            num_classes = args_dict["num_classes"] + 1
-        else:
-            num_classes = args_dict["num_classes"]
+        num_classes = args_dict["num_classes"] + 1
         pred_matrix = np.full((num_samples, total_timesteps), -1, dtype=int)
         gt_matrix = np.full((num_samples, total_timesteps), -1, dtype=int)
         logits_matrix = np.full(
@@ -1276,136 +917,54 @@ def process_and_evaluate(
             for batch_idx, batch_data in enumerate(dataloader_eval):
                 # Forward pass
                 if model_choice == "any2any":
-                    if dataset_eval.window_size == dataset_eval.inner_window_size:
-                        (
-                            emg_window,
-                            action_window,
-                            masked_emg,
-                            masked_actions,
-                            mask_positions_emg,
-                            mask_positions_actions,
-                            task_idx,
-                            transition_index,
-                            untokenized_emg,
-                        ) = batch_data
-                        emg_window = emg_window.to(device)
-                        action_window = action_window.to(device)
-                        masked_emg = masked_emg.to(device)
-                        masked_actions = masked_actions.to(device)
-                        mask_positions_emg = mask_positions_emg.to(device)
-                        mask_positions_actions = mask_positions_actions.to(device)
-                        task_idx = task_idx.to(device)
-                        emg_output, action_output = model(
-                            masked_emg, masked_actions, task_idx, mask_positions_emg
-                        )
-                    else:
-                        (
-                            emg_window,
-                            coarse_action,
-                            masked_coarse_actions,
-                            mask_positions_coarse_emg,
-                            mask_positions_coarse_actions,
-                            task_idx,
-                            transition_index,
-                            untokenized_emg,
-                            action_window,
-                        ) = batch_data
-                        emg_window = emg_window.to(device)
-                        coarse_action = coarse_action.to(device)
-                        masked_coarse_actions = masked_coarse_actions.to(device)
-                        mask_positions_coarse_emg = mask_positions_coarse_emg.to(device)
-                        mask_positions_coarse_actions = (
-                            mask_positions_coarse_actions.to(device)
-                        )
-                        task_idx = task_idx.to(device)
-                        transition_index = transition_index.to(device)
-                        untokenized_emg = untokenized_emg.to(device)
-                        action_window = action_window.to(device)
-
-                        emg_output, action_output = model(
-                            emg_window,
-                            masked_coarse_actions,
-                            task_idx,
-                            mask_positions_coarse_emg,
-                        )
-                else:
-                    (emg_window, action_window, raw_label_seq) = batch_data
+                    (
+                        emg_window,
+                        action_window,
+                        masked_emg,
+                        masked_actions,
+                        mask_positions_emg,
+                        mask_positions_actions,
+                        task_idx,
+                        transition_index,
+                        untokenized_emg,
+                    ) = batch_data
                     emg_window = emg_window.to(device)
-                    action_output = model(emg_window)
-
-                if model_choice == "tra_hgr":
-                    current_batch_size = emg_window.shape[0]
-                    predicted_action_tokens = (
-                        torch.argmax(action_output, dim=-1).cpu().numpy()
+                    action_window = action_window.to(device)
+                    masked_emg = masked_emg.to(device)
+                    masked_actions = masked_actions.to(device)
+                    mask_positions_emg = mask_positions_emg.to(device)
+                    mask_positions_actions = mask_positions_actions.to(device)
+                    task_idx = task_idx.to(device)
+                    emg_output, action_output = model(
+                        masked_emg, masked_actions, task_idx, mask_positions_emg
                     )
-                    for i in range(current_batch_size):
-                        global_idx = batch_idx * eval_batch_size + i
-                        cur_index = global_idx * stride
-                        if cur_index > total_timesteps:
-                            end_idx = total_timesteps
-                        pred_matrix[global_idx, cur_index] = predicted_action_tokens[i]
-                        gt_matrix[global_idx, cur_index] = raw_label_seq[i, -1]
-                        logits_matrix[global_idx, cur_index, :] = action_output[i]
-                else:
-                    # Upsample if resolution is lower
-                    if action_output.size(1) < args_dict["window_size"]:
-                        if (
-                            model_choice == "any2any"
-                            and dataset_eval.use_mav_for_emg == 0
-                        ):
-                            inner_window_size = args_dict["inner_window_size"]
-                            inner_stride = args_dict["inner_window_size"]
-                        elif (
-                            model_choice == "any2any"
-                            and dataset_eval.use_mav_for_emg == 1
-                        ):
-                            inner_window_size = args_dict["inner_window_size"]
-                            inner_stride = args_dict["mav_inner_stride"]
-                        elif model_choice == "ed_tcn":
-                            inner_window_size = 150
-                            inner_stride = 25
-                        elif model_choice == "lstm":
-                            inner_window_size = 100
-                            inner_stride = 1
-                        else:
-                            raise Exception("model_choice not recognized")
 
-                        action_output = repeat_chunks(
-                            action_output,
-                            args_dict["window_size"],
-                            inner_window_size,
-                            inner_stride,
-                        )
+                # Obtain predicted labels, ground truth, and the logits
+                # Depending on the type of aggregation, realtime_online_aggregation() will choose to use pred_matrix or logits_matrix
+                predicted_action_tokens = (
+                    torch.argmax(action_output, dim=-1).cpu().numpy()
+                )
+                action_output_vals = action_output.cpu().numpy()
+                ground_truth_action_tokens = action_window.cpu().numpy()
 
-                    # Obtain predicted labels, ground truth, and the logits
-                    # Depending on the type of aggregation, realtime_online_aggregation() will choose to use pred_matrix or logits_matrix
-                    predicted_action_tokens = (
-                        torch.argmax(action_output, dim=-1).cpu().numpy()
+                # Fill in pred_matrix, gt_matrix, logits_matrix
+                current_batch_size = emg_window.shape[0]
+                for i in range(current_batch_size):
+                    global_idx = batch_idx * eval_batch_size + i
+                    start_idx = global_idx * stride
+                    end_idx = start_idx + args_dict["window_size"]
+                    if end_idx > total_timesteps:
+                        end_idx = total_timesteps
+
+                    pred_matrix[global_idx, start_idx:end_idx] = (
+                        predicted_action_tokens[i, : (end_idx - start_idx)]
                     )
-                    action_output_vals = action_output.cpu().numpy()
-                    if model_choice == "any2any":
-                        ground_truth_action_tokens = action_window.cpu().numpy()
-                    else:
-                        ground_truth_action_tokens = raw_label_seq
-
-                    # Fill in pred_matrix, gt_matrix, logits_matrix
-                    current_batch_size = emg_window.shape[0]
-                    for i in range(current_batch_size):
-                        global_idx = batch_idx * eval_batch_size + i
-                        start_idx = global_idx * stride
-                        end_idx = start_idx + args_dict["window_size"]
-                        if end_idx > total_timesteps:
-                            end_idx = total_timesteps
-
-                        pred_matrix[global_idx, start_idx:end_idx] = (
-                            predicted_action_tokens[i, : (end_idx - start_idx)]
-                        )
-                        gt_matrix[global_idx, start_idx:end_idx] = (
-                            ground_truth_action_tokens[i, : (end_idx - start_idx)]
-                        )
-                        logits_matrix[global_idx, start_idx:end_idx, :] = (
-                            action_output_vals[i, : (end_idx - start_idx), :]
-                        )
+                    gt_matrix[global_idx, start_idx:end_idx] = (
+                        ground_truth_action_tokens[i, : (end_idx - start_idx)]
+                    )
+                    logits_matrix[global_idx, start_idx:end_idx, :] = (
+                        action_output_vals[i, : (end_idx - start_idx), :]
+                    )
 
         gt_aggregated = build_gt_sequence(
             gt_matrix,
@@ -1551,7 +1110,6 @@ def main(
     samples_between_prediction,
     maj_vote_range,
     epn_eval,
-    recog_threshold,
     verbose,
     model_choice,
     sample_range=None,
@@ -1685,7 +1243,6 @@ def main(
             maj_vote_range=maj_vote_range,
             stride=stride,
             epn_eval=epn_eval,
-            recog_threshold=recog_threshold,
             verbose=verbose,
             model_choice=model_choice,
         )
@@ -1930,7 +1487,6 @@ def evaluate_checkpoint_programmatic(
     likelihood_format = "logits"
     maj_vote_range = "future"
     epn_eval = 0
-    recog_threshold = 0.5
     sample_range = None
 
     # Call main evaluation function
@@ -1951,7 +1507,6 @@ def evaluate_checkpoint_programmatic(
         samples_between_prediction=samples_between_prediction,
         maj_vote_range=maj_vote_range,
         epn_eval=epn_eval,
-        recog_threshold=recog_threshold,
         verbose=verbose,
         model_choice=model_choice,
         sample_range=sample_range,
@@ -2046,7 +1601,6 @@ if __name__ == "__main__":
         choices=[0, 1],
         help="If 1, use EPN-based .npy files and compute EPN metrics.",
     )
-    parser.add_argument("--recog_threshold", default=0.5, type=float)
     parser.add_argument(
         "--verbose",
         default=0,
@@ -2089,7 +1643,6 @@ if __name__ == "__main__":
         args.samples_between_prediction,
         args.maj_vote_range,
         args.epn_eval,
-        args.recog_threshold,
         args.verbose,
         args.model_choice,
         args.sample_range,

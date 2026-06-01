@@ -117,7 +117,6 @@ def train_final_model(
         "--share_pe",
         "--dataset_selection", "custom_folder",
         "--window_size", "600",
-        "--inner_window_size", "600",
         "--model_choice", "any2any",
         "--val_patient_ids", "none",
         "--epn_subset_percentage", "1.0",

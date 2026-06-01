@@ -3,22 +3,8 @@ import random
 import os
 import glob
 import math
-from nn_models import (
-    Any2Any_Model,
-    EDTCN_Model,
-    LSTM_Model,
-    ANN_Model,
-    TraHGR_Model,
-    LDA_Model,
-)
-from dataset import (
-    Any2Any_Dataset,
-    EDTCN_Dataset,
-    LSTM_Dataset,
-    ANN_Dataset,
-    TraHGR_Dataset,
-    LDA_Dataset,
-)
+from nn_models import Any2Any_Model
+from dataset import Any2Any_Dataset
 
 
 def parse_tuple(s):
@@ -435,16 +421,6 @@ def initialize_dataset(
             raise ValueError(
                 "task_selection is not in increasing order, which is not compatible with __getitem__()"
             )
-        if args.use_mav_for_emg == 1:
-            # compute the effective length
-            # scale down lambda, transition_buffer, etc.
-            effective_mav_length = (
-                args.window_size - args.inner_window_size
-            ) // args.mav_inner_stride + 1
-            args.lambda_poisson = 2
-            scale_factor = effective_mav_length / args.window_size
-            args.transition_buffer = max(1, int(args.transition_buffer * scale_factor))
-
         dataset_train = Any2Any_Dataset(
             labeled_csv_paths_train,
             unlabeled_csv_paths_train,
@@ -468,8 +444,6 @@ def initialize_dataset(
             args.medfilt_order,
             args.noise,
             args.hand_choice,
-            args.inner_window_size,
-            args.use_mav_for_emg,
         )
         # Note that for the validation set, we always fix the masks by setting seeded_mask = True
         # seeded_mask controls not just whether the masks are reproducible, but also if training uses a different mask for each sample at every epoch
@@ -498,95 +472,8 @@ def initialize_dataset(
             args.medfilt_order,
             0.0,  # no noise
             args.hand_choice,
-            args.inner_window_size,
-            args.use_mav_for_emg,
         )
 
-    elif args.model_choice == "ed_tcn":
-        dataset_train = EDTCN_Dataset(
-            window_size=args.window_size,
-            offset=args.offset,
-            file_paths=labeled_csv_paths_train,
-            inner_window_size=150,
-            inner_stride=25,
-        )
-        dataset_val = EDTCN_Dataset(
-            window_size=args.window_size,
-            offset=args.offset,
-            file_paths=labeled_csv_paths_val,
-            inner_window_size=150,
-            inner_stride=25,
-        )
-    elif args.model_choice == "lstm":
-        dataset_train = LSTM_Dataset(
-            window_size=args.window_size,
-            offset=args.offset,
-            csv_paths=labeled_csv_paths_train,
-            num_classes=args.num_classes,
-            precomputed_mean=None,
-            precomputed_std=None,
-        )
-        dataset_val = LSTM_Dataset(
-            window_size=args.window_size,
-            offset=args.offset,
-            csv_paths=labeled_csv_paths_val,
-            num_classes=args.num_classes,
-            precomputed_mean=dataset_train.global_mean,
-            precomputed_std=dataset_train.global_std,
-        )
-    elif args.model_choice == "ann":
-        dataset_train = ANN_Dataset(
-            window_size=args.window_size,
-            offset=args.offset,
-            file_paths=labeled_csv_paths_train,
-            num_classes=args.num_classes,
-            use_precomputed_stats=False,
-        )
-        dataset_val = ANN_Dataset(
-            window_size=args.window_size,
-            offset=args.offset,
-            file_paths=labeled_csv_paths_val,
-            num_classes=args.num_classes,
-            use_precomputed_stats=True,
-            precomputed_mean=dataset_train.mean_,
-            precomputed_std=dataset_train.std_,
-        )
-    elif args.model_choice == "trahgr":
-        dataset_train = TraHGR_Dataset(
-            window_size=args.window_size,
-            offset=args.offset,
-            file_paths=labeled_csv_paths_train,
-            num_classes=args.num_classes,
-        )
-        dataset_val = TraHGR_Dataset(
-            window_size=args.window_size,
-            offset=args.offset,
-            file_paths=labeled_csv_paths_val,
-            num_classes=args.num_classes,
-        )
-    elif args.model_choice == "lda":
-        dataset_train = LDA_Dataset(
-            window_size=args.window_size,
-            offset=args.offset,
-            file_paths=labeled_csv_paths_train,
-            median_filter_size=args.median_filter_size,
-            medfilt_order=args.medfilt_order,
-            hand_choice=args.hand_choice,
-            use_precomputed_stats=False,
-            pad_like_ann=True,
-        )
-        dataset_val = LDA_Dataset(
-            window_size=args.window_size,
-            offset=args.offset,
-            file_paths=labeled_csv_paths_val,
-            median_filter_size=args.median_filter_size,
-            medfilt_order=args.medfilt_order,
-            hand_choice=args.hand_choice,
-            use_precomputed_stats=True,
-            precomputed_mean=dataset_train.mean_,
-            precomputed_std=dataset_train.std_,
-            pad_like_ann=True,
-        )
     else:
         raise ValueError(f"Unknown model_choice: {args.model_choice}")
 
@@ -606,45 +493,11 @@ def initialize_model(args):
             args.mask_alignment,
             args.share_pe,
             args.tie_weight,
-            args.use_decoder,
             args.use_input_layernorm,
             args.num_classes,
             args.output_reduction_method,
             args.chunk_size,
-            args.inner_window_size,
-            args.use_mav_for_emg,
-            args.mav_inner_stride,
         )
-    elif args.model_choice == "ed_tcn":
-        model = EDTCN_Model(
-            num_channels=8,
-            num_classes=args.num_classes,
-            enc_filters=(128, 288),
-            kernel_size=9,
-        )
-    elif args.model_choice == "lstm":
-        model = LSTM_Model(
-            input_size=8,
-            fc_size=400,
-            hidden_size=256,
-            num_classes=args.num_classes,
-        )
-    elif args.model_choice == "ann":
-        model = ANN_Model(num_classes=args.num_classes)
-    elif args.model_choice == "trahgr":
-        model = TraHGR_Model(
-            num_classes=args.num_classes,
-            embed_dim=144, # hardcode to follow paper implementation
-            num_heads=8, # hardcode to follow paper implementation
-            num_layers=1, # hardcode to follow paper implementation
-            dropout=args.dropout,
-            window_len=args.window_size,
-            num_sensors=8,
-            num_filter_orders=3
-
-        )
-    elif args.model_choice == "lda":
-        model = LDA_Model(num_classes=args.num_classes)
     else:
         raise ValueError(f"Unknown model_choice: {args.model_choice}")
 
