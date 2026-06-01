@@ -151,7 +151,7 @@ python3 run_data_efficiency.py \
 
 ### 4. Convergence Study
 
-Trains for 100 epochs (10× optimal) and evaluates every 5 epochs on both stroke test sets and healthy s25 data to track learning dynamics and catastrophic forgetting.
+Trains for 100 epochs (10× optimal) and evaluates every 5 epochs on stroke test sets to track learning dynamics.
 
 **Run all participants:**
 ```bash
@@ -163,13 +163,12 @@ python3 run_convergence.py --participant all --variant lora
 python3 run_convergence.py --participant p15 --variant lora
 ```
 
-**With explicit config file and healthy data path:**
+**With explicit config file:**
 ```bash
 python3 run_convergence.py \
   --participant p15 \
   --variant lora \
-  --config_file temp_cv_checkpoints/p15_lora_cv_results.json \
-  --healthy_s25_path ~/Workspace/reactemg/data/ROAM_EMG/s25
+  --config_file temp_cv_checkpoints/p15_lora_cv_results.json
 ```
 
 ### 5. Generating Tables & Figures
@@ -205,10 +204,10 @@ Bars show mean transition accuracy; error bars are the **std across the 12 per-t
 #### Figure 2 / Convergence figures
 
 ```bash
-# Combined plot: all strategy stroke curves + LoRA healthy-retention curve
+# Combined plot: all strategy stroke curves
 python3 analyze_convergence.py --combined -p p15 -o figure_conv_s2.png
 
-# Single-variant dual-axis plot (stroke accuracy vs. healthy retention)
+# Single-variant convergence plot (stroke accuracy)
 python3 analyze_convergence.py --variant lora --participant p15
 ```
 
@@ -261,7 +260,7 @@ model_checkpoints/
 | `cv_hyperparameter_search.py` | 4-fold CV hyperparameter selection |
 | `run_main_experiment.py` | Complete experimental pipeline orchestration |
 | `run_data_efficiency.py` | Few-shot adaptation experiments |
-| `run_convergence.py` | Convergence and forgetting analysis |
+| `run_convergence.py` | Convergence analysis |
 
 ## Fixed Evaluation Parameters
 
