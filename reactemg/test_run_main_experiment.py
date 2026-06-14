@@ -46,7 +46,7 @@ from cv_hyperparameter_search import (
 # TEST CONFIGURATION
 # ============================================================================
 
-# Participant folders for testing (anonymized dataset shipped under reactemg_stroke/data/)
+# Participant folders for testing (anonymized dataset under reactemg_stroke/data/; see README)
 _DATA_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"
 )
@@ -138,7 +138,7 @@ def test_pretrained_checkpoint_config():
     if os.path.isfile(PRETRAINED_CHECKPOINT):
         log_pass("checkpoint_exists", f"Checkpoint file exists: {PRETRAINED_CHECKPOINT}")
     else:
-        log_fail("checkpoint_exists", f"Checkpoint file not found: {PRETRAINED_CHECKPOINT}")
+        log_skip("checkpoint_exists", f"Checkpoint not set/found — set PRETRAINED_CHECKPOINT (see README): {PRETRAINED_CHECKPOINT}")
 
 
 def test_variants_config():

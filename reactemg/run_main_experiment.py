@@ -20,8 +20,8 @@ from event_classification import evaluate_checkpoint_programmatic
 
 
 # Configuration
-# Anonymized stroke dataset ships with the repo under reactemg_stroke/data/{s1,s2,s3}.
-# Resolve it relative to this file so the path works from any clone / working directory.
+# Anonymized stroke dataset lives under reactemg_stroke/data/{s1,s2,s3} (download it there;
+# see README). Resolve it relative to this file so paths work from any clone / working dir.
 _DATA_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"
 )
@@ -31,7 +31,9 @@ PARTICIPANTS = {
     's3': os.path.join(_DATA_DIR, 's3'),
 }
 
-PRETRAINED_CHECKPOINT = "/home/rsw1/Workspace/reactemg/reactemg/model_checkpoints/reproduce_2025_07_28/LOSO_s14_left_2025-11-15_19-01-41_pc1/epoch_4.pth"
+# TODO: point this at your healthy-pretrained Any2Any checkpoint (the base model every
+# fine-tuned variant adapts from, e.g. a healthy LOSO run from base ReactEMG). See README.
+PRETRAINED_CHECKPOINT = "TODO/path/to/healthy_pretrained_checkpoint.pth"
 
 VARIANTS = ['stroke_only', 'head_only', 'lora', 'full_finetune']
 

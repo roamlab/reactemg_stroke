@@ -7,9 +7,9 @@ This repository extends [ReactEMG](https://github.com/roamlab/reactemg) to study
 ## Participants & Data Structure
 
 ### Stroke Participants
-- **s1**: Left-hand stroke survivor (data folder: `data/s1`)
-- **s2**: Left-hand stroke survivor (data folder: `data/s2`)
-- **s3**: Left-hand stroke survivor (data folder: `data/s3`)
+- **s1** (data folder: `data/s1`)
+- **s2** (data folder: `data/s2`)
+- **s3** (data folder: `data/s3`)
 
 ### Data Organization
 
@@ -82,19 +82,28 @@ All commands assume you're in the `reactemg/` directory.
 
 ### Prerequisites & setup
 
-The anonymized stroke dataset ships with this repo under `data/{s1,s2,s3}`, so the
-scripts resolve `PARTICIPANTS` automatically — no data paths to edit. The only thing
-that does **not** live in this repo is the healthy-pretrained model:
+The stroke dataset and the healthy-pretrained checkpoint do **not** live in this repo;
+set both up before running:
 
-1. **Point the scripts at the checkpoint.** `run_main_experiment.py`,
-   `run_data_efficiency.py`, and `run_convergence.py` each hard-code one value near the
-   top of the file:
-   - `PRETRAINED_CHECKPOINT` — the healthy-pretrained Any2Any checkpoint that every
-     fine-tuned variant adapts from (produced by base ReactEMG, e.g. a healthy LOSO run).
+1. **Download the stroke dataset.** It is **not** bundled with this repository. Unpack it
+   at the **repository root** so the three subject folders land at `data/s1`, `data/s2`,
+   and `data/s3` (the layout shown above). The run scripts resolve `PARTICIPANTS` from this
+   location automatically, so there are no data paths to edit in the code. For example,
+   from a Dropbox share link:
+   ```bash
+   # Run from the repository root. Replace the URL with your own Dropbox share link and
+   # make sure it ends in `dl=1` (Dropbox serves the raw file with dl=1, a preview with dl=0).
+   curl -L "https://www.dropbox.com/s/TODO/stroke_dataset.zip?dl=1" -o stroke_dataset.zip  # TODO: your link
+   mkdir -p data && unzip stroke_dataset.zip -d data/   # -> data/s1, data/s2, data/s3
+   ```
 
-   Edit it to match your machine.
+2. **Set the healthy-pretrained checkpoint.** The healthy-pretrained Any2Any model that
+   every fine-tuned variant adapts from (produced by base ReactEMG, e.g. a healthy LOSO
+   run) is not in this repo either. In `run_main_experiment.py`, `run_data_efficiency.py`,
+   and `run_convergence.py`, replace the `PRETRAINED_CHECKPOINT` placeholder (marked `TODO`
+   near the top of each file) with the path to your `.pth` checkpoint.
 
-2. **Disable / configure Weights & Biases.** Every training run calls `wandb.init`.
+3. **Disable / configure Weights & Biases.** Every training run calls `wandb.init`.
    To reproduce without a W&B account:
    ```bash
    export WANDB_MODE=disabled
