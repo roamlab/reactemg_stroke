@@ -88,13 +88,11 @@ set both up before running:
 1. **Download the stroke dataset.** It is **not** bundled with this repository. Unpack it
    at the **repository root** so the three subject folders land at `data/s1`, `data/s2`,
    and `data/s3` (the layout shown above). The run scripts resolve `PARTICIPANTS` from this
-   location automatically, so there are no data paths to edit in the code. For example,
-   from a Dropbox share link:
+   location automatically, so there are no data paths to edit in the code. Download and
+   unpack it from the repository root:
    ```bash
-   # Run from the repository root. Replace the URL with your own Dropbox share link and
-   # make sure it ends in `dl=1` (Dropbox serves the raw file with dl=1, a preview with dl=0).
-   curl -L "https://www.dropbox.com/s/TODO/stroke_dataset.zip?dl=1" -o stroke_dataset.zip  # TODO: your link
-   mkdir -p data && unzip stroke_dataset.zip -d data/   # -> data/s1, data/s2, data/s3
+   curl -L -o data.zip "https://www.dropbox.com/scl/fi/jp28src297h9ndddkz97i/data.zip?rlkey=usa9qunoo22ir35rh1ui677mh&dl=1"
+   unzip data.zip && rm data.zip      # the archive contains a top-level data/  ->  data/s1, data/s2, data/s3
    ```
 
 2. **Set the healthy-pretrained checkpoint.** The healthy-pretrained Any2Any model that
