@@ -53,10 +53,13 @@ from dataset_utils import (
 # TEST CONFIGURATION
 # ============================================================================
 
+_DATA_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"
+)
 PARTICIPANT_FOLDERS = {
-    'p4': os.path.expanduser('~/Workspace/myhand/src/collected_data/2026_01_06'),
-    'p15': os.path.expanduser('~/Workspace/myhand/src/collected_data/2025_12_04'),
-    'p20': os.path.expanduser('~/Workspace/myhand/src/collected_data/2025_12_18'),
+    's1': os.path.join(_DATA_DIR, 's1'),
+    's2': os.path.join(_DATA_DIR, 's2'),
+    's3': os.path.join(_DATA_DIR, 's3'),
 }
 
 # Test results tracking
@@ -275,10 +278,10 @@ def test_get_test_files_raises_value_error():
     """Test that get_test_files raises ValueError when multiple files match."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create two files matching the same pattern
-        open(os.path.join(tmpdir, "p15_open_5.csv"), 'w').close()
-        open(os.path.join(tmpdir, "p15_backup_open_5.csv"), 'w').close()
+        open(os.path.join(tmpdir, "s2_open_5.csv"), 'w').close()
+        open(os.path.join(tmpdir, "s2_backup_open_5.csv"), 'w').close()
         # Also need close_5 to not trigger FileNotFoundError first
-        open(os.path.join(tmpdir, "p15_close_5.csv"), 'w').close()
+        open(os.path.join(tmpdir, "s2_close_5.csv"), 'w').close()
 
         # Test 3.3: Multiple matches for open_5 should raise ValueError
         try:
@@ -299,8 +302,8 @@ def test_get_test_files_success():
     """Test get_test_files succeeds with correct files."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create exactly the expected files for mid_session_baseline
-        open(os.path.join(tmpdir, "p15_open_5.csv"), 'w').close()
-        open(os.path.join(tmpdir, "p15_close_5.csv"), 'w').close()
+        open(os.path.join(tmpdir, "s2_open_5.csv"), 'w').close()
+        open(os.path.join(tmpdir, "s2_close_5.csv"), 'w').close()
 
         # Test 3.4: Should succeed with correct files
         try:
@@ -339,8 +342,8 @@ def test_get_all_calibration_files():
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create complete set of calibration files
         for set_num in range(1, 5):
-            open(os.path.join(tmpdir, f"p15_open_{set_num}.csv"), 'w').close()
-            open(os.path.join(tmpdir, f"p15_close_{set_num}.csv"), 'w').close()
+            open(os.path.join(tmpdir, f"s2_open_{set_num}.csv"), 'w').close()
+            open(os.path.join(tmpdir, f"s2_close_{set_num}.csv"), 'w').close()
 
         # Test 5.1: Should return 8 files
         files = conv_get_all_calibration_files(tmpdir)
@@ -363,9 +366,9 @@ def test_get_all_calibration_files_incomplete():
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create incomplete set (missing close_3)
         for set_num in range(1, 5):
-            open(os.path.join(tmpdir, f"p15_open_{set_num}.csv"), 'w').close()
+            open(os.path.join(tmpdir, f"s2_open_{set_num}.csv"), 'w').close()
             if set_num != 3:
-                open(os.path.join(tmpdir, f"p15_close_{set_num}.csv"), 'w').close()
+                open(os.path.join(tmpdir, f"s2_close_{set_num}.csv"), 'w').close()
 
         # Test 5.3: Should skip incomplete set
         files = conv_get_all_calibration_files(tmpdir)
@@ -530,8 +533,8 @@ def test_get_paired_repetition_indices():
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create 4 sets of calibration files, each with 3 reps
         for set_num in range(1, 5):
-            open_path = os.path.join(tmpdir, f"p15_open_{set_num}.csv")
-            close_path = os.path.join(tmpdir, f"p15_close_{set_num}.csv")
+            open_path = os.path.join(tmpdir, f"s2_open_{set_num}.csv")
+            close_path = os.path.join(tmpdir, f"s2_close_{set_num}.csv")
 
             open_labels = create_ror_pattern('open', num_reps=3)
             close_labels = create_ror_pattern('close', num_reps=3)
@@ -579,8 +582,8 @@ def test_get_paired_repetition_indices_mismatched_reps():
     """Test get_paired_repetition_indices raises error for mismatched rep counts."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create set with mismatched rep counts
-        open_path = os.path.join(tmpdir, "p15_open_1.csv")
-        close_path = os.path.join(tmpdir, "p15_close_1.csv")
+        open_path = os.path.join(tmpdir, "s2_open_1.csv")
+        close_path = os.path.join(tmpdir, "s2_close_1.csv")
 
         # Open has 3 reps, close has 2 reps
         open_labels = create_ror_pattern('open', num_reps=3)
@@ -884,7 +887,7 @@ def test_temp_directory_creation():
 
     # Test 10.5: Nested directory creation
     with tempfile.TemporaryDirectory() as tmpdir:
-        nested = os.path.join(tmpdir, "model_checkpoints", "convergence", "p15")
+        nested = os.path.join(tmpdir, "model_checkpoints", "convergence", "s2")
         try:
             os.makedirs(nested, exist_ok=True)
             if os.path.isdir(nested):
@@ -936,7 +939,7 @@ def test_json_serialization_data_efficiency():
     """Test JSON serialization for data efficiency results."""
     # Simulate aggregated results structure
     aggregated_results = {
-        'participant': 'p15',
+        'participant': 's2',
         'variant': 'lora',
         'budget_k': 4,
         'num_trials': 12,
@@ -968,8 +971,8 @@ def test_json_segments_serialization():
     """Test JSON serialization for sampled segments."""
     # Simulate sampled_segments structure from train_with_sampled_data
     sampled_segments = {
-        '/path/to/p15_open_1.csv': [(0, 1200), (2400, 3600)],
-        '/path/to/p15_close_1.csv': [(0, 1200)],
+        '/path/to/s2_open_1.csv': [(0, 1200), (2400, 3600)],
+        '/path/to/s2_close_1.csv': [(0, 1200)],
     }
 
     # Test 11.3: Tuple segments become lists in JSON
@@ -1102,7 +1105,7 @@ def test_edge_cases():
 
     # Test 13.2: Single file (not a pair)
     with tempfile.TemporaryDirectory() as tmpdir:
-        open(os.path.join(tmpdir, "p15_open_1.csv"), 'w').close()
+        open(os.path.join(tmpdir, "s2_open_1.csv"), 'w').close()
         files = conv_get_all_calibration_files(tmpdir)
         if len(files) == 0:
             log_pass("edge_single_file", "Single file (no pair) returns empty list")
@@ -1111,8 +1114,8 @@ def test_edge_cases():
 
     # Test 13.3: Files with wrong extension
     with tempfile.TemporaryDirectory() as tmpdir:
-        open(os.path.join(tmpdir, "p15_open_1.txt"), 'w').close()
-        open(os.path.join(tmpdir, "p15_close_1.txt"), 'w').close()
+        open(os.path.join(tmpdir, "s2_open_1.txt"), 'w').close()
+        open(os.path.join(tmpdir, "s2_close_1.txt"), 'w').close()
         files = conv_get_all_calibration_files(tmpdir)
         if len(files) == 0:
             log_pass("edge_wrong_extension", ".txt files not matched")

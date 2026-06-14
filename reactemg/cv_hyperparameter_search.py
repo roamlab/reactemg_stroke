@@ -95,7 +95,7 @@ def run_training(
     Args:
         config: Hyperparameter configuration
         train_files: List of training file paths
-        participant: Participant ID (e.g., 'p15')
+        participant: Participant ID (e.g., 's2')
         fold_idx: Fold index
         pretrained_checkpoint: Path to pretrained checkpoint
         temp_dir: Directory for temporary checkpoints
@@ -230,7 +230,7 @@ def hyperparameter_search(
     Perform 4-fold CV hyperparameter search for a specific variant.
 
     Args:
-        participant: Participant ID (e.g., 'p15')
+        participant: Participant ID (e.g., 's2')
         participant_folder: Path to participant data folder
         variant: One of ['stroke_only', 'head_only', 'lora', 'full_finetune']
         pretrained_checkpoint: Path to pretrained checkpoint
@@ -342,7 +342,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="CV Hyperparameter Search")
-    parser.add_argument("--participant", required=True, help="Participant ID (e.g., p15)")
+    parser.add_argument("--participant", required=True, help="Participant ID (e.g., s2)")
     parser.add_argument("--participant_folder", required=True, help="Path to participant data")
     parser.add_argument("--variant", required=True,
                         choices=['stroke_only', 'head_only', 'lora', 'full_finetune'],

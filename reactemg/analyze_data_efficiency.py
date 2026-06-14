@@ -4,9 +4,9 @@ Analyze data efficiency experiment results.
 For a given subject and each N, compute the average transition accuracy across all test conditions.
 
 Usage:
-    python3 analyze_data_efficiency.py --variant lora --participant p4
-    python3 analyze_data_efficiency.py --variant lora --participant p15
-    python3 analyze_data_efficiency.py --variant head_only --participant p20
+    python3 analyze_data_efficiency.py --variant lora --participant s1
+    python3 analyze_data_efficiency.py --variant lora --participant s2
+    python3 analyze_data_efficiency.py --variant head_only --participant s3
 
     # Plot all subjects for a variant:
     python3 analyze_data_efficiency.py --variant lora --plot
@@ -22,18 +22,18 @@ import seaborn as sns
 
 
 BUDGETS = [1, 4, 8]
-PARTICIPANTS = ["p4", "p15", "p20"]
-PARTICIPANT_LABELS = {"p4": "s1", "p15": "s2", "p20": "s3"}
+PARTICIPANTS = ["s1", "s2", "s3"]
+PARTICIPANT_LABELS = {"s1": "s1", "s2": "s2", "s3": "s3"}
 
 # Zero-shot accuracy (N=0, no fine-tuning)
-ZERO_SHOT_ACC = {"p4": 0.05, "p15": 0.22, "p20": 0.13}
+ZERO_SHOT_ACC = {"s1": 0.05, "s2": 0.22, "s3": 0.13}
 
 # Full data accuracy (all calibration data) - per variant
 FULL_DATA_ACC = {
-    "lora": {"p4": 0.45, "p15": 0.62, "p20": 0.83},
-    "full_finetune": {"p4": 0.40, "p15": 0.62, "p20": 0.82},
-    "head_only": {"p4": 0.45, "p15": 0.62, "p20": 0.83},
-    "stroke_only": {"p4": 0.45, "p15": 0.62, "p20": 0.83},
+    "lora": {"s1": 0.45, "s2": 0.62, "s3": 0.83},
+    "full_finetune": {"s1": 0.40, "s2": 0.62, "s3": 0.82},
+    "head_only": {"s1": 0.45, "s2": 0.62, "s3": 0.83},
+    "stroke_only": {"s1": 0.45, "s2": 0.62, "s3": 0.83},
 }
 
 # X-axis labels and positions (evenly spaced)
@@ -406,9 +406,9 @@ def main():
         epilog="""
 Examples:
     # Analyze single participant
-    python3 analyze_data_efficiency.py --variant lora --participant p4
-    python3 analyze_data_efficiency.py --variant head_only --participant p15
-    python3 analyze_data_efficiency.py -v lora -p p20
+    python3 analyze_data_efficiency.py --variant lora --participant s1
+    python3 analyze_data_efficiency.py --variant head_only --participant s2
+    python3 analyze_data_efficiency.py -v lora -p s3
 
     # Plot all subjects (s1, s2, s3) for a variant
     python3 analyze_data_efficiency.py --variant lora --plot
@@ -424,7 +424,7 @@ Examples:
     parser.add_argument(
         "--participant", "-p",
         default=None,
-        help="Participant ID (e.g., p4, p15, p20). Required for per-participant analysis."
+        help="Participant ID (e.g., s1, s2, s3). Required for per-participant analysis."
     )
     parser.add_argument(
         "--results_dir",
@@ -440,7 +440,7 @@ Examples:
     parser.add_argument(
         "--plot",
         action="store_true",
-        help="Plot all three subjects (p4=s1, p15=s2, p20=s3) for the given --variant"
+        help="Plot all three subjects (s1=s1, s2=s2, s3=s3) for the given --variant"
     )
     parser.add_argument(
         "--compare",

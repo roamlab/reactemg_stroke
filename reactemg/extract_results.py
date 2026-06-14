@@ -4,7 +4,7 @@ Extract main experiment results in Table II layout.
 
 Each cell is mean ± std across the 5 held-out test conditions.
 Avg columns are the mean across participants.
-Participant mapping: p4=S1, p15=S2, p20=S3.
+Participant mapping: s1=S1, s2=S2, s3=S3.
 
 Usage:
     python3 extract_results.py
@@ -27,8 +27,8 @@ VARIANT_LABELS = {
     "full_finetune": "Full",
 }
 
-PARTICIPANTS = ["p4", "p15", "p20"]
-PARTICIPANT_LABELS = {"p4": "S1", "p15": "S2", "p20": "S3"}
+PARTICIPANTS = ["s1", "s2", "s3"]
+PARTICIPANT_LABELS = {"s1": "S1", "s2": "S2", "s3": "S3"}
 
 CONDITIONS = [
     "mid_session_baseline",
@@ -69,7 +69,7 @@ def cell_stats(values):
 
 
 def build_table(results_dir: Path):
-    """out[metric_key][variant] = {"p4": (mean,std), ..., "avg": (mean,None)}"""
+    """out[metric_key][variant] = {"s1": (mean,std), ..., "avg": (mean,None)}"""
     out = {}
     for metric_key, _ in METRICS:
         out[metric_key] = {}
@@ -98,7 +98,7 @@ def format_table(table) -> str:
     avg_section_w = cell_w * 2
 
     title = ("Table II — Intent Detection Performance "
-             "(mean ± std over 5 test conditions; p4=S1, p15=S2, p20=S3)")
+             "(mean ± std over 5 test conditions; s1=S1, s2=S2, s3=S3)")
 
     top = (f"{'':<{method_w}} | "
            f"{'Raw Accuracy':^{subj_section_w}} | "

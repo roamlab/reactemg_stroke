@@ -19,10 +19,15 @@ from event_classification import evaluate_checkpoint_programmatic
 
 
 # Configuration
+# Anonymized stroke dataset ships with the repo under reactemg_stroke/data/{s1,s2,s3}.
+# Resolve it relative to this file so the path works from any clone / working directory.
+_DATA_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"
+)
 PARTICIPANTS = {
-    'p4': '~/Workspace/myhand/src/collected_data/2026_01_06',
-    'p15': '~/Workspace/myhand/src/collected_data/2025_12_04',
-    'p20': '~/Workspace/myhand/src/collected_data/2025_12_18',
+    's1': os.path.join(_DATA_DIR, 's1'),
+    's2': os.path.join(_DATA_DIR, 's2'),
+    's3': os.path.join(_DATA_DIR, 's3'),
 }
 
 PRETRAINED_CHECKPOINT = "/home/rsw1/Workspace/reactemg/reactemg/model_checkpoints/reproduce_2025_07_28/LOSO_s14_left_2025-11-15_19-01-41_pc1/epoch_4.pth"
@@ -371,7 +376,7 @@ def find_config_file(participant: str, variant: str, config_dir: str = "temp_cv_
     Auto-discover config file for a participant and variant.
 
     Args:
-        participant: Participant ID (e.g., 'p15')
+        participant: Participant ID (e.g., 's2')
         variant: Fine-tuning variant (e.g., 'lora')
         config_dir: Directory containing CV results files
 
@@ -466,7 +471,7 @@ if __name__ == "__main__":
         epilog="""
 Examples:
   # Run for a single participant (requires --config_file)
-  python3 run_convergence.py --participant p15 --variant lora --config_file temp_cv_checkpoints/p15_lora_cv_results.json
+  python3 run_convergence.py --participant s2 --variant lora --config_file temp_cv_checkpoints/s2_lora_cv_results.json
 
   # Run for all participants (auto-discovers config files)
   python3 run_convergence.py --participant all --variant lora
@@ -478,9 +483,9 @@ Examples:
     parser.add_argument(
         "--participant",
         type=str,
-        choices=['p4', 'p15', 'p20', 'all'],
+        choices=['s1', 's2', 's3', 'all'],
         required=True,
-        help="Participant ID (p4, p15, p20) or 'all' to run all participants"
+        help="Participant ID (s1, s2, s3) or 'all' to run all participants"
     )
     parser.add_argument("--variant", required=True, help="Best fine-tuning variant")
     parser.add_argument(

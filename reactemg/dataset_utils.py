@@ -28,7 +28,7 @@ def extract_repetition_units(
         Each tuple defines a segment that can be extracted from the file.
 
     Example:
-        >>> reps = extract_repetition_units('p15_open_1.csv', 'open')
+        >>> reps = extract_repetition_units('s2_open_1.csv', 'open')
         >>> print(f"Found {len(reps)} repetitions")
         Found 3 repetitions
         >>> print(f"First rep spans indices {reps[0][0]} to {reps[0][1]}")
@@ -127,7 +127,7 @@ def get_paired_repetition_indices(
         where i ranges from 0 to 11 (for 4 sets × 3 reps)
 
     Example:
-        >>> indices = get_paired_repetition_indices('~/path/to/p15/')
+        >>> indices = get_paired_repetition_indices('~/path/to/s2/')
         >>> g_0 = indices['g_0']
         >>> open_file, close_file, open_reps, close_reps = g_0
         >>> print(f"g_0 uses {open_file} and {close_file}")
@@ -141,7 +141,7 @@ def get_paired_repetition_indices(
         open_file = os.path.join(participant_folder, f"*_open_{set_num}.csv")
         close_file = os.path.join(participant_folder, f"*_close_{set_num}.csv")
 
-        # Find actual files (handle p15/p20 prefix)
+        # Find actual files (handle s2/s3 prefix)
         import glob
         open_files = glob.glob(open_file)
         close_files = glob.glob(close_file)
@@ -204,7 +204,7 @@ def sample_repetitions(
         Length of each inner list = budget_k
 
     Example:
-        >>> paired_reps = get_paired_repetition_indices('~/path/to/p15/')
+        >>> paired_reps = get_paired_repetition_indices('~/path/to/s2/')
         >>> k1_samples = sample_repetitions(paired_reps, budget_k=1)
         >>> k4_samples = sample_repetitions(paired_reps, budget_k=4)
     """

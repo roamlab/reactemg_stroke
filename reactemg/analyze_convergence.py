@@ -6,17 +6,17 @@ This script visualizes convergence behavior
 by plotting stroke performance over training epochs.
 
 Usage:
-    python3 analyze_convergence.py --variant lora --participant p4
-    python3 analyze_convergence.py --variant lora --participant p15
-    python3 analyze_convergence.py --variant head_only --participant p20
-    python3 analyze_convergence.py --variant lora --participant p4 --output my_plot.png
+    python3 analyze_convergence.py --variant lora --participant s1
+    python3 analyze_convergence.py --variant lora --participant s2
+    python3 analyze_convergence.py --variant head_only --participant s3
+    python3 analyze_convergence.py --variant lora --participant s1 --output my_plot.png
 
-    # Compare LoRA vs Full Finetune for p15:
+    # Compare LoRA vs Full Finetune for s2:
     python3 analyze_convergence.py --compare --output comparison.png
 
     # Combined plot with all variant stroke curves:
-    python3 analyze_convergence.py --combined -p p15
-    python3 analyze_convergence.py --combined -p p15 --output combined_p15.png
+    python3 analyze_convergence.py --combined -p s2
+    python3 analyze_convergence.py --combined -p s2 --output combined_s2.png
 """
 
 import argparse
@@ -29,7 +29,7 @@ import seaborn as sns
 import numpy as np
 
 
-PARTICIPANT_LABELS = {"p4": "s1", "p15": "s2", "p20": "s3"}
+PARTICIPANT_LABELS = {"s1": "s1", "s2": "s2", "s3": "s3"}
 
 
 CONDITIONS = [
@@ -47,7 +47,7 @@ def load_convergence_data(variant: str, participant: str, results_dir: str = Non
 
     Args:
         variant: Fine-tuning variant (e.g., 'lora', 'head_only')
-        participant: Participant ID (e.g., 'p4', 'p15', 'p20')
+        participant: Participant ID (e.g., 's1', 's2', 's3')
         results_dir: Path to results directory
 
     Returns:
@@ -211,7 +211,7 @@ def print_summary(participant: str, plot_data: Dict):
 
 
 def create_combined_plot(
-    participant: str = "p15",
+    participant: str = "s2",
     results_dir: str = None,
     output_path: str = None,
     show_plot: bool = False,
@@ -227,7 +227,7 @@ def create_combined_plot(
     - Reference line for stroke zero-shot baseline
 
     Args:
-        participant: Participant ID (default: p15)
+        participant: Participant ID (default: s2)
         results_dir: Path to results directory
         output_path: Path to save the plot
         show_plot: Whether to display the plot interactively
@@ -335,7 +335,7 @@ def create_combined_plot(
 
 
 def plot_variant_comparison(
-    participant: str = "p15",
+    participant: str = "s2",
     results_dir: str = None,
     output_path: str = None,
 ):
@@ -343,7 +343,7 @@ def plot_variant_comparison(
     Create a two-column comparison plot for LoRA vs Full Finetune convergence.
 
     Args:
-        participant: Participant ID (default: p15)
+        participant: Participant ID (default: s2)
         results_dir: Path to results directory
         output_path: Path to save the plot
     """
@@ -429,18 +429,18 @@ def main():
         epilog="""
 Examples:
     # Single variant analysis
-    python3 analyze_convergence.py --variant lora --participant p4
-    python3 analyze_convergence.py --variant lora --participant p15 --show
-    python3 analyze_convergence.py -v head_only -p p20 --output my_plot.png
+    python3 analyze_convergence.py --variant lora --participant s1
+    python3 analyze_convergence.py --variant lora --participant s2 --show
+    python3 analyze_convergence.py -v head_only -p s3 --output my_plot.png
 
-    # Compare LoRA vs Full Finetune (default: p15)
+    # Compare LoRA vs Full Finetune (default: s2)
     python3 analyze_convergence.py --compare
-    python3 analyze_convergence.py --compare -p p4 --output comparison_p4.png
-    python3 analyze_convergence.py --compare -p p20
+    python3 analyze_convergence.py --compare -p s1 --output comparison_s1.png
+    python3 analyze_convergence.py --compare -p s3
 
     # Combined plot: all variant stroke curves
-    python3 analyze_convergence.py --combined -p p15
-    python3 analyze_convergence.py --combined -p p15 --output combined_p15.png --show
+    python3 analyze_convergence.py --combined -p s2
+    python3 analyze_convergence.py --combined -p s2 --output combined_s2.png --show
         """
     )
     parser.add_argument(
@@ -452,7 +452,7 @@ Examples:
     parser.add_argument(
         "--participant", "-p",
         default=None,
-        help="Participant ID (e.g., p4, p15, p20)"
+        help="Participant ID (e.g., s1, s2, s3)"
     )
     parser.add_argument(
         "--results_dir",
@@ -489,7 +489,7 @@ Examples:
 
     if args.combined:
         # Create combined plot with all variants
-        participant = args.participant if args.participant else "p15"
+        participant = args.participant if args.participant else "s2"
         create_combined_plot(
             participant=participant,
             results_dir=args.results_dir,
@@ -497,8 +497,8 @@ Examples:
             show_plot=args.show,
         )
     elif args.compare:
-        # Create comparison plot (default to p15 if no participant specified)
-        participant = args.participant if args.participant else "p15"
+        # Create comparison plot (default to s2 if no participant specified)
+        participant = args.participant if args.participant else "s2"
         plot_variant_comparison(
             participant=participant,
             results_dir=args.results_dir,

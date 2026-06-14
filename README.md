@@ -7,26 +7,26 @@ This repository extends [ReactEMG](https://github.com/roamlab/reactemg) to study
 ## Participants & Data Structure
 
 ### Stroke Participants
-- **p4**: Left-hand stroke survivor (data folder: `2026_01_06`)
-- **p15**: Left-hand stroke survivor (data folder: `2025_12_04`)
-- **p20**: Left-hand stroke survivor (data folder: `2025_12_18`)
+- **s1**: Left-hand stroke survivor (data folder: `data/s1`)
+- **s2**: Left-hand stroke survivor (data folder: `data/s2`)
+- **s3**: Left-hand stroke survivor (data folder: `data/s3`)
 
 ### Data Organization
 
 Each participant's data is organized into calibration and test sets:
 
 ```
-participant_folder/
-├── open_1.csv, close_1.csv     ┐
-├── open_2.csv, close_2.csv     │  Calibration pool
-├── open_3.csv, close_3.csv     │  (4 baseline sets × 3 reps each = 12 paired reps)
-├── open_4.csv, close_4.csv     ┘
+data/s1/                                                 # s2/ and s3/ share this layout
+├── s1_open_1.csv, s1_close_1.csv     ┐
+├── s1_open_2.csv, s1_close_2.csv     │  Calibration pool
+├── s1_open_3.csv, s1_close_3.csv     │  (4 baseline sets × 3 reps each = 12 paired reps)
+├── s1_open_4.csv, s1_close_4.csv     ┘
 │
-├── open_5.csv, close_5.csv                    # mid_session_baseline
-├── open_fatigue.csv, close_fatigue.csv        # end_session_baseline
-├── open_hovering.csv, close_hovering.csv      # unseen_posture
-├── open_sensor_shift.csv, close_sensor_shift.csv  # sensor_shift
-└── close_from_open.csv                        # orthosis_actuated
+├── s1_open_5.csv, s1_close_5.csv                         # mid_session_baseline
+├── s1_open_fatigue.csv, s1_close_fatigue.csv             # end_session_baseline
+├── s1_open_hovering.csv, s1_close_hovering.csv           # unseen_posture
+├── s1_open_sensor_shift.csv, s1_close_sensor_shift.csv   # sensor_shift
+└── s1_close_from_open.csv                                # orthosis_actuated
 ```
 
 **Calibration Pool**: 12 paired repetitions (g_0 through g_11) extracted from 4 baseline sets, used for training/validation splits.
@@ -82,18 +82,17 @@ All commands assume you're in the `reactemg/` directory.
 
 ### Prerequisites & setup
 
-Before running anything, make sure the pipeline can find your data and the
-healthy-pretrained model — **neither lives in this repo**:
+The anonymized stroke dataset ships with this repo under `data/{s1,s2,s3}`, so the
+scripts resolve `PARTICIPANTS` automatically — no data paths to edit. The only thing
+that does **not** live in this repo is the healthy-pretrained model:
 
-1. **Point the scripts at your paths.** `run_main_experiment.py`,
-   `run_data_efficiency.py`, and `run_convergence.py` each define two values
-   hard-coded near the top of the file:
-   - `PARTICIPANTS` — maps each participant to its data folder (the `open_*/close_*`
-     CSVs described above).
+1. **Point the scripts at the checkpoint.** `run_main_experiment.py`,
+   `run_data_efficiency.py`, and `run_convergence.py` each hard-code one value near the
+   top of the file:
    - `PRETRAINED_CHECKPOINT` — the healthy-pretrained Any2Any checkpoint that every
      fine-tuned variant adapts from (produced by base ReactEMG, e.g. a healthy LOSO run).
 
-   Edit these to match your machine.
+   Edit it to match your machine.
 
 2. **Disable / configure Weights & Biases.** Every training run calls `wandb.init`.
    To reproduce without a W&B account:
@@ -149,13 +148,13 @@ done
 
 ### 4. Generating Tables & Figures
 
-With `results/` populated, these scripts produce the paper's tables and figures (subject mapping **p4 = S1, p15 = S2, p20 = S3**):
+With `results/` populated, these scripts produce the paper's tables and figures (subject mapping **s1 = S1, s2 = S2, s3 = S3**):
 
 ```bash
 python3 extract_results.py                                              # Table 2      -> results/main_experiment/table2.txt
 python3 plot_main_results.py                                           # Table 2 bars -> results/main_experiment/table2_bars.png
 python3 analyze_data_efficiency.py --compare -o figure_dataeff.png     # data-efficiency figure
-python3 analyze_convergence.py --combined -p p15 -o figure_conv_s2.png # convergence figure (per subject; p15 = S2)
+python3 analyze_convergence.py --combined -p s2 -o figure_conv_s2.png # convergence figure (per subject; s2 = S2)
 ```
 
 - The `--compare` and `--combined` figures require the corresponding experiment to have been run for **every overlaid variant** (data efficiency defaults to `head_only lora full_finetune`; convergence needs all four).

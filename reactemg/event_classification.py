@@ -1136,7 +1136,7 @@ def main(
     torch.backends.cudnn.benchmark = False
 
     # Override val_patient_ids to accept all files when files_or_dirs are directly specified
-    # This allows evaluation on stroke participants (p15, p20) using healthy-pretrained checkpoints
+    # This allows evaluation on stroke participants (s1, s2, s3) using healthy-pretrained checkpoints
     args_dict_modified = args_dict.copy()
     args_dict_modified["val_patient_ids"] = ["none"]
 
@@ -1471,7 +1471,7 @@ def evaluate_checkpoint_programmatic(
     Example:
         >>> metrics = evaluate_checkpoint_programmatic(
         ...     checkpoint_path='model.pth',
-        ...     csv_files=['p15_open_1.csv', 'p15_close_1.csv'],
+        ...     csv_files=['s2_open_1.csv', 's2_close_1.csv'],
         ...     compute_latency=True,
         ... )
         >>> print(f"Transition accuracy: {metrics['transition_accuracy']:.4f}")

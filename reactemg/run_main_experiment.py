@@ -20,10 +20,15 @@ from event_classification import evaluate_checkpoint_programmatic
 
 
 # Configuration
+# Anonymized stroke dataset ships with the repo under reactemg_stroke/data/{s1,s2,s3}.
+# Resolve it relative to this file so the path works from any clone / working directory.
+_DATA_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"
+)
 PARTICIPANTS = {
-    'p4': '~/Workspace/myhand/src/collected_data/2026_01_06',
-    'p15': '~/Workspace/myhand/src/collected_data/2025_12_04',
-    'p20': '~/Workspace/myhand/src/collected_data/2025_12_18',
+    's1': os.path.join(_DATA_DIR, 's1'),
+    's2': os.path.join(_DATA_DIR, 's2'),
+    's3': os.path.join(_DATA_DIR, 's3'),
 }
 
 PRETRAINED_CHECKPOINT = "/home/rsw1/Workspace/reactemg/reactemg/model_checkpoints/reproduce_2025_07_28/LOSO_s14_left_2025-11-15_19-01-41_pc1/epoch_4.pth"
@@ -261,7 +266,7 @@ def run_main_experiment(participant_filter='all'):
     Run the complete main experiment.
 
     Args:
-        participant_filter: Which participant(s) to run ('p15', 'p20', or 'all')
+        participant_filter: Which participant(s) to run ('s1', 's2', 's3', or 'all')
     """
 
     print("\n" + "="*80)
@@ -337,14 +342,14 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Run only participant p4
-  python3 run_main_experiment.py --participant p4
+  # Run only participant s1
+  python3 run_main_experiment.py --participant s1
 
-  # Run only participant p15
-  python3 run_main_experiment.py --participant p15
+  # Run only participant s2
+  python3 run_main_experiment.py --participant s2
 
-  # Run only participant p20
-  python3 run_main_experiment.py --participant p20
+  # Run only participant s3
+  python3 run_main_experiment.py --participant s3
 
   # Run all participants
   python3 run_main_experiment.py --participant all
@@ -355,9 +360,9 @@ Examples:
     parser.add_argument(
         "--participant",
         type=str,
-        choices=['p4', 'p15', 'p20', 'all'],
+        choices=['s1', 's2', 's3', 'all'],
         default='all',
-        help="Which participant to run: p4, p15, p20, or all (default: all)"
+        help="Which participant to run: s1, s2, s3, or all (default: all)"
     )
 
     args = parser.parse_args()

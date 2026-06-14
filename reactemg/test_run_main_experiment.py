@@ -46,11 +46,14 @@ from cv_hyperparameter_search import (
 # TEST CONFIGURATION
 # ============================================================================
 
-# Participant folders for testing
+# Participant folders for testing (anonymized dataset shipped under reactemg_stroke/data/)
+_DATA_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"
+)
 PARTICIPANT_FOLDERS = {
-    'p4': os.path.expanduser('~/Workspace/myhand/src/collected_data/2026_01_06'),
-    'p15': os.path.expanduser('~/Workspace/myhand/src/collected_data/2025_12_04'),
-    'p20': os.path.expanduser('~/Workspace/myhand/src/collected_data/2025_12_18'),
+    's1': os.path.join(_DATA_DIR, 's1'),
+    's2': os.path.join(_DATA_DIR, 's2'),
+    's3': os.path.join(_DATA_DIR, 's3'),
 }
 
 # Test results tracking
@@ -109,8 +112,8 @@ def test_participants_config():
 
     # Test 1.2: All participant IDs follow expected pattern
     for pid in PARTICIPANTS.keys():
-        if not pid.startswith('p') or not pid[1:].isdigit():
-            log_fail("participant_id_format", f"Participant ID '{pid}' doesn't match pattern 'pN'")
+        if not pid.startswith('s') or not pid[1:].isdigit():
+            log_fail("participant_id_format", f"Participant ID '{pid}' doesn't match pattern 'sN'")
         else:
             log_pass(f"participant_id_format_{pid}", f"ID '{pid}' is valid")
 
@@ -291,9 +294,9 @@ def test_get_all_calibration_files_multiple_matches():
     """Test get_all_calibration_files() when multiple files match a pattern."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create duplicate files for open_1
-        open(os.path.join(tmpdir, "p15_open_1.csv"), 'w').close()
-        open(os.path.join(tmpdir, "p15_backup_open_1.csv"), 'w').close()  # Another match
-        open(os.path.join(tmpdir, "p15_close_1.csv"), 'w').close()
+        open(os.path.join(tmpdir, "s2_open_1.csv"), 'w').close()
+        open(os.path.join(tmpdir, "s2_backup_open_1.csv"), 'w').close()  # Another match
+        open(os.path.join(tmpdir, "s2_close_1.csv"), 'w').close()
 
         calib_files = get_all_calibration_files(tmpdir)
 
@@ -364,8 +367,8 @@ def test_get_test_files_multiple_matches():
     """Test get_test_files() raises ValueError for multiple matching files."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create two files matching the same pattern
-        open(os.path.join(tmpdir, "p15_open_5.csv"), 'w').close()
-        open(os.path.join(tmpdir, "p15_backup_open_5.csv"), 'w').close()
+        open(os.path.join(tmpdir, "s2_open_5.csv"), 'w').close()
+        open(os.path.join(tmpdir, "s2_backup_open_5.csv"), 'w').close()
 
         try:
             get_test_files(tmpdir, 'mid_session_baseline')
@@ -406,12 +409,12 @@ def test_pattern_matching_calibration():
 
     # Test patterns used in get_all_calibration_files
     test_cases = [
-        ("p15_open_1.csv", "*_open_1.csv", True),
-        ("p15_close_4.csv", "*_close_4.csv", True),
-        ("p20_open_2.csv", "*_open_2.csv", True),
+        ("s2_open_1.csv", "*_open_1.csv", True),
+        ("s2_close_4.csv", "*_close_4.csv", True),
+        ("s3_open_2.csv", "*_open_2.csv", True),
         ("open_1.csv", "*_open_1.csv", False),  # No prefix
-        ("p15_open_10.csv", "*_open_1.csv", False),  # Wrong number
-        ("p15_open_1.txt", "*_open_1.csv", False),  # Wrong extension
+        ("s2_open_10.csv", "*_open_1.csv", False),  # Wrong number
+        ("s2_open_1.txt", "*_open_1.csv", False),  # Wrong extension
     ]
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -436,12 +439,12 @@ def test_pattern_matching_test_conditions():
     """Verify test condition file patterns match correctly."""
     # Test patterns used in get_test_files
     test_cases = [
-        ("p15_open_5.csv", "*_open_5.csv", True),
-        ("p15_close_fatigue.csv", "*_close_fatigue.csv", True),
-        ("p15_open_hovering.csv", "*_open_hovering.csv", True),
-        ("p15_close_from_open.csv", "*_close_from_open.csv", True),
-        ("p15_open_sensor_shift.csv", "*_open_sensor_shift.csv", True),
-        ("p15open_5.csv", "*_open_5.csv", False),  # Missing underscore
+        ("s2_open_5.csv", "*_open_5.csv", True),
+        ("s2_close_fatigue.csv", "*_close_fatigue.csv", True),
+        ("s2_open_hovering.csv", "*_open_hovering.csv", True),
+        ("s2_close_from_open.csv", "*_close_from_open.csv", True),
+        ("s2_open_sensor_shift.csv", "*_open_sensor_shift.csv", True),
+        ("s2open_5.csv", "*_open_5.csv", False),  # Missing underscore
     ]
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -645,9 +648,9 @@ def test_cv_fold_files():
 
 def test_cv_fold_invalid_index():
     """Test CV fold function with invalid fold index."""
-    folder = PARTICIPANT_FOLDERS.get('p15')
+    folder = PARTICIPANT_FOLDERS.get('s2')
     if not folder or not os.path.isdir(folder):
-        log_skip("cv_invalid_fold", "p15 data folder not found")
+        log_skip("cv_invalid_fold", "s2 data folder not found")
         return
 
     # Test with invalid fold indices
@@ -787,7 +790,7 @@ def test_results_directory_structure():
 
     # Verify the format strings work
     try:
-        for participant in ['p15', 'p20']:
+        for participant in ['s2', 's3']:
             for variant in VARIANTS + ['zero_shot']:
                 for condition in TEST_CONDITIONS.keys():
                     results_dir = os.path.join("results/main_experiment", participant, variant, condition)
@@ -923,10 +926,10 @@ def test_checkpoint_directory_naming():
     pattern = r"^(.+)_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})_(.+)$"
 
     test_names = [
-        ("p15_lora_final_2025-12-04_14-30-00_pc1", True),
-        ("p15_stroke_only_fold0_lr0.0001_ep10_do0.1_2025-12-04_14-30-00_pc1", True),
+        ("s2_lora_final_2025-12-04_14-30-00_pc1", True),
+        ("s2_stroke_only_fold0_lr0.0001_ep10_do0.1_2025-12-04_14-30-00_pc1", True),
         ("invalid_name", False),
-        ("p15_lora_final_2025-12-04_14-30-00", False),  # Missing hostname
+        ("s2_lora_final_2025-12-04_14-30-00", False),  # Missing hostname
     ]
 
     for name, should_match in test_names:
@@ -1103,12 +1106,12 @@ def test_evaluation_function_runs():
         return
 
     # Find a test file
-    test_folder = PARTICIPANT_FOLDERS.get('p15')
+    test_folder = PARTICIPANT_FOLDERS.get('s2')
     if not test_folder or not os.path.isdir(test_folder):
-        log_skip("eval_function_runs", "p15 data folder not found")
+        log_skip("eval_function_runs", "s2 data folder not found")
         return
 
-    test_file = os.path.join(test_folder, "p15_open_1.csv")
+    test_file = os.path.join(test_folder, "s2_open_1.csv")
     if not os.path.exists(test_file):
         test_files_found = glob.glob(os.path.join(test_folder, "*_open_1.csv"))
         if test_files_found:
@@ -1158,12 +1161,12 @@ def test_json_serialization():
 
     # Simulate metrics dict that would be created
     test_metrics = {
-        'participant': 'p15',
+        'participant': 's2',
         'variant': 'lora',
         'condition': 'mid_session_baseline',
         'transition_accuracy': 0.8567,
         'raw_accuracy': 0.9234,
-        'test_files': ['/path/to/p15_open_5.csv', '/path/to/p15_close_5.csv'],
+        'test_files': ['/path/to/s2_open_5.csv', '/path/to/s2_close_5.csv'],
     }
 
     try:
@@ -1227,11 +1230,11 @@ def test_glob_pattern_edge_cases():
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create files with various edge case names
         test_files = [
-            "p15_open_1.csv",
-            "p15_close_1.csv",
-            "p15_open_10.csv",  # Should NOT match *_open_1.csv
-            "p15_open_1_backup.csv",  # Should NOT match *_open_1.csv
-            "subdir_p15_open_1.csv",  # Should match *_open_1.csv
+            "s2_open_1.csv",
+            "s2_close_1.csv",
+            "s2_open_10.csv",  # Should NOT match *_open_1.csv
+            "s2_open_1_backup.csv",  # Should NOT match *_open_1.csv
+            "subdir_s2_open_1.csv",  # Should match *_open_1.csv
         ]
 
         for f in test_files:
@@ -1241,22 +1244,22 @@ def test_glob_pattern_edge_cases():
         matches = glob.glob(os.path.join(tmpdir, "*_open_1.csv"))
         filenames = [os.path.basename(m) for m in matches]
 
-        # Should match: p15_open_1.csv, subdir_p15_open_1.csv
-        # Should NOT match: p15_open_10.csv, p15_open_1_backup.csv
-        if "p15_open_1.csv" in filenames and "subdir_p15_open_1.csv" in filenames:
+        # Should match: s2_open_1.csv, subdir_s2_open_1.csv
+        # Should NOT match: s2_open_10.csv, s2_open_1_backup.csv
+        if "s2_open_1.csv" in filenames and "subdir_s2_open_1.csv" in filenames:
             log_pass("glob_matches_expected", "Glob matches expected files")
         else:
             log_fail("glob_matches_expected", f"Unexpected matches: {filenames}")
 
-        if "p15_open_10.csv" not in filenames:
+        if "s2_open_10.csv" not in filenames:
             log_pass("glob_excludes_10", "Glob correctly excludes *_10.csv")
         else:
-            log_fail("glob_excludes_10", "Glob incorrectly matched p15_open_10.csv")
+            log_fail("glob_excludes_10", "Glob incorrectly matched s2_open_10.csv")
 
-        if "p15_open_1_backup.csv" not in filenames:
+        if "s2_open_1_backup.csv" not in filenames:
             log_pass("glob_excludes_backup", "Glob correctly excludes *_backup.csv")
         else:
-            log_fail("glob_excludes_backup", "Glob incorrectly matched p15_open_1_backup.csv")
+            log_fail("glob_excludes_backup", "Glob incorrectly matched s2_open_1_backup.csv")
 
 
 # ============================================================================
